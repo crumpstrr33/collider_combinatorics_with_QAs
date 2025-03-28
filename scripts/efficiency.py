@@ -4,7 +4,7 @@ algorithm is ran for those indices and the passed parameters. Various data are s
 a dictionary but of important is placement, i.e. whether the algorithm found the correct
 answer as most likely (placement = 1), 2nd most likely (placement = 2) and so on.
 
-Below "symmetric" or `sym` refers to the fact that "111000" and "000111" represent the 
+Below "symmetric" or `sym` refers to the fact that "111000" and "000111" represent the
 same answer and so the number counts for each are combined. Also "3+3" or `3p3` refers
 to assuming that the answer must have three 1's and three 0's, i.e. three particle
 assigned to each decaying top quark.
@@ -28,6 +28,7 @@ from constants import (
     EVENT_CHOICES,
     EVT_DIR,
     IND_DIR,
+    NOISY_DIR,
     OPTIMIZERS,
     OUTPUT_DIR,
     QUADCOEFF_CHOICES,
@@ -320,6 +321,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--quadcoeff", "-c", required=True, type=str, choices=QUADCOEFF_CHOICES
     )
+    # Number of shots, defaults to None == infinite
+    parser.add_argument("--shots", "-s", required=False)
     # The lower and upper limit of events to run, must match an index file
     parser.add_argument("--indlims", "-i", required=True, type=int, nargs=2)
     # The lower and upper limit of the allowed invariant mass
@@ -342,7 +345,7 @@ if __name__ == "__main__":
         choices=OPTIMIZERS,
     )
     # Stepsize of optimizer
-    parser.add_argument("--stepsize", "-s", default=DEFAULT_STEPSIZE, type=float)
+    parser.add_argument("--stepsize", default=DEFAULT_STEPSIZE, type=float)
     ## ARGUMENTS FOR FALQON
     # Time step
     parser.add_argument("--dt", "-t", default=DEFAULT_DT, type=float)
@@ -366,6 +369,7 @@ if __name__ == "__main__":
     # Gather parameters
     etype = args.event
     dtype = args.dtype
+    shots = args.shots
     invmlims = args.invmlims
     depth = args.depth
     indlims = args.indlims
@@ -391,9 +395,9 @@ if __name__ == "__main__":
 
     # Make sure we didn't get more than one (if so, might need to specify UID)
     if len(ind_dir) != 1:
-        raise Exception(f"Found {len(ind_dir)} matching directories:\n" f"{ind_dir}")
+        raise Exception(f"Found {len(ind_dir)} matching directories:\n{ind_dir}")
     if len(ind_file) != 1:
-        raise Exception(f"Found {len(ind_file)} matching files:\n" f"{ind_file}")
+        raise Exception(f"Found {len(ind_file)} matching files:\n{ind_file}")
 
     # Get the indices to pass to function
     chosen_inds = np.load(f"{ind_file[0]}")["inds"]
@@ -406,6 +410,8 @@ if __name__ == "__main__":
     # Create save directory and file names
     save_name = f"eff_{etype}_{dtype}_{alg}_{quadcoeff_type}_{uid}_{inds}_p{depth}"
     save_dir = f"eff_{etype}_{dtype}_{alg}_{quadcoeff_type}_p{depth}"
+    if shots is not None:
+        save_dir += f"_shots{shots}"
 
     # Only add initial beta and/or dt if they aren't the defaults
     if args.algorithm == "falqon":
@@ -428,22 +434,26 @@ if __name__ == "__main__":
         match alg.lower():
             case "falqon":
                 alg_opt_kwargs = {"dt": args.dt, "init_beta": args.initbeta}
-                alg_kwargs = {"depth": depth}
+                alg_kwargs = {"depth": depth, "shots": shots}
             case _:
                 alg_opt_kwargs = {
                     "optimizer": args.optimizer,
                     "opt_kwargs": {"stepsize": args.stepsize},
                 }
-                alg_kwargs = {"depth": depth, "steps": args.steps}
+                alg_kwargs = {"depth": depth, "steps": args.steps, "shots": shots}
 
-        # fuck it, we do it manually
-        # bitflip_prob = 0.01
-        # prob_str = "1"
-        # save_dir = (
-        #     NOISY_DIR
-        #     / f"eff_{prob_str}_{etype}_{dtype}_{alg}_{quadcoeff_type}_p{depth}"
-        # )
-        # alg_kwargs |= {"bitflip_prob": bitflip_prob, "device": "default.mixed"}
+        # i was too lazy to do this proper for noisy runs, so i did this :)
+        if False:
+            bitflip_prob = 0.001
+            prob_str = "0.1"
+            save_dir = (
+                NOISY_DIR
+                / f"eff_{prob_str}_{etype}_{dtype}_{alg}_{quadcoeff_type}_p{depth}"
+            )
+            alg_kwargs |= {"bitflip_prob": bitflip_prob, "device": "default.mixed"}
+        else:
+            bitflip_prob = 0
+
         # Run events
         efficiency = Efficiency(
             etype=etype,
@@ -459,12 +469,12 @@ if __name__ == "__main__":
         efficiency.run()
 
     # Collect event-nonspecific data
-    bitflip_prob = 0
     metadata = {
         "lims": invmlims,
         "N_range": indlims,
         "uid": uid,
         "alg_type": alg,
+        "shots": shots,
         "depth": depth,
         "etype": etype,
         "dtype": dtype,
