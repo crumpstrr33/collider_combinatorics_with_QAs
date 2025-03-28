@@ -29,7 +29,7 @@ IND_DIR = DATA_DIR / "ind_data"
 # path is specified
 LOG_DIR = DATA_DIR / "logs"
 # Log directory for finite shot runs
-SHOT_LOG_DIR = DATA_DIR / "shot_logs
+SHOT_LOG_DIR = DATA_DIR / "shot_logs"
 # Directory for plots as created by the Autosavinator 3000 in "analysis.ipynb"
 PLOTS_DIR = DATA_DIR / "plots"
 
