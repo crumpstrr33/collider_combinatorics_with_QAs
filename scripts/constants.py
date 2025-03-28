@@ -11,11 +11,13 @@ INVMS = [1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3]
 
 # "DATADIR" is the env variable for the path to where you save your data
 # then DATA_DIR is where the data for this project is saved.
-DATA_DIR = Path(environ["DATADIR"]) / "vqa"
+DATA_DIR = Path(environ["DATADIR"]) / "data"
 # Event data from e.g. madgraph
 EVT_DIR = DATA_DIR / "evt_data"
 # Where the data from the QAs are outputted to
 OUTPUT_DIR = DATA_DIR / "data"
+# Same as OUTPUT_DIR but for simulations with finite shots
+SHOT_DIR = DATA_DIR / "shot_data"
 # Same as OUTPUT_DIR but for simulations with noise
 NOISY_DIR = DATA_DIR / "noisy_data"
 # Output for the analyses of data from running "postdata.py"
@@ -26,6 +28,8 @@ IND_DIR = DATA_DIR / "ind_data"
 # Output for log files. Code ran using NOHUP cmd in "batch_run.py" where log file
 # path is specified
 LOG_DIR = DATA_DIR / "logs"
+# Log directory for finite shot runs
+SHOT_LOG_DIR = DATA_DIR / "shot_logs
 # Directory for plots as created by the Autosavinator 3000 in "analysis.ipynb"
 PLOTS_DIR = DATA_DIR / "plots"
 
@@ -50,5 +54,5 @@ EVENT_CHOICES = ["ttbar", "tW", "6jet"]
 OPTIMIZERS = ["grad_descent", "adagrad", "adam"]
 
 SYM_TRUE_BS_DICT = {"ttbar": "000111", "tW": "00111", "6jet": None}
-MASS_NORM_DICT = {"ttbar": 2 * TOP_MASS, "tW": TOP_MASS + W_MASS}
+MASS_NORM_DICT = {"ttbar": 2 * TOP_MASS, "tW": TOP_MASS + W_MASS, "4top": 4 * TOP_MASS}
 NUM_FSP_DICT = {"ttbar": 6, "tW": 5, "6jet": 6}
