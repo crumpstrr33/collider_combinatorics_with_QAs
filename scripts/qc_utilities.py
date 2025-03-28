@@ -1,5 +1,5 @@
 """
-File with utility functions used throughout 
+File with utility functions used throughout
 """
 
 import re
@@ -96,7 +96,7 @@ def _mass_norm(m4: _m4, etype: Optional[str] = None) -> float:
     """
     if etype is None:
         # Assume 6 particles means ttbar and 5 mean tW. If ambiguous, must pass `etype`
-        etype = {6: "ttbar", 5: "tW"}[m4.shape[0]]
+        etype = {12: "4top", 6: "ttbar", 5: "tW"}[m4.shape[0]]
     return MASS_NORM_DICT[etype]
 
 
