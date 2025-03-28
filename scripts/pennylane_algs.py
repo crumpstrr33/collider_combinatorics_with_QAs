@@ -1,12 +1,16 @@
 from datetime import datetime as dt
 from itertools import combinations, product
 from math import asin, sqrt
+from multiprocessing import Pool
+from random import choice
 
 import numpy
 import pennylane as qml
 from pennylane import numpy as np
 from scipy.optimize import minimize
 from scipy.special import comb
+
+from .qc_utilities import swap
 
 
 class VQA:
@@ -28,6 +32,7 @@ class VQA:
         Jij,
         depth,
         steps=None,
+        shots=None,
         prec=1e-4,
         optimizer="adam",
         opt_kwargs={},
@@ -46,6 +51,8 @@ class VQA:
         Jij - Ising NxN matrix created from 4-momenta defined in 2111.07806.
         depth - How many layers in the circuit, written as `p`.
         steps - How many steps to run the optimizer.
+        shots - Number of shots for the circuit, If None, use exact statevector, e.g.
+            an infinite number of shots.
         prec - How precise the optimizer should be. That is the optimizer won't stop
             until the difference between the latest two evaluations are less that `prec`
             or `steps` number of evaluations have been completed. That is, which ever
@@ -60,12 +67,12 @@ class VQA:
         self.Jij = self._Jij / self.max_Jij
         self.depth = depth
         self.steps = steps
+        self.shots = shots
         self.prec = prec
         self.N = len(Jij)
         self.bitflip_prob = bitflip_prob
 
-        # If want noisy circuit, force use of "default.mixed" to do so
-        self.device = qml.device(device, wires=self.N)
+        self.device = qml.device(device, wires=self.N, shots=self.shots)
         self.str_opt = optimizer
         self.optimizer = self.OPTIMIZERS[optimizer](**opt_kwargs)
 
@@ -122,11 +129,12 @@ class VQA:
         """
         probs_qnode = qml.QNode(self._probs_circuit, self.device)
         probs = probs_qnode(*self.params)
+
         if as_dict:
             return dict(zip(self.bit_strs, probs))
         return probs
 
-    def optimize(self, init_params=None, print_it=False, init_val=0.5):
+    def optimize(self, init_params=None, print_it=False, print_pref="", init_val=0.5):
         """
         Runs the optimization for given initial parameters. The shapes of those
         parameters should defined in a list as `self.param_shapes` in the __init__
@@ -143,35 +151,34 @@ class VQA:
                     + f"{shape}, not {self.params[ind]}"
                 )
 
+        # Create QNode (a la the decorator way)
         if self.bitflip_prob != 0:
             noisy_device = qml.transforms.insert(
                 self.device, op=qml.BitFlip, op_args=self.bitflip_prob
             )
             self.cost_qnode = qml.QNode(func=self._cost_circuit, device=noisy_device)
         else:
-            # Create QNode (a la the decorator way)
             self.cost_qnode = qml.QNode(func=self._cost_circuit, device=self.device)
 
         # Run through the steps of the optimizing
-
         self.costs = np.empty(self.steps)
         self.evals = self.steps
         start = dt.now()
         for ind in range(self.steps):
             # Save the value of the cost per step too
             self.params, self.costs[ind] = self.optimizer.step_and_cost(
-                self.cost_qnode,
-                *self.params,
+                self.cost_qnode, *self.params
             )
             if ind:
                 self.current_prec = abs(1 - self.costs[ind - 1] / self.costs[ind])
                 if print_it:
                     print(
+                        f"{print_pref}"
                         f"[{self.__class__.__name__}] {self.str_opt} > "
-                        f"Calculating step {ind + 1}/{self.steps}...",
+                        f"Calculating step {ind + 1}/{self.steps}..."
                         f" Time: {(dt.now() - start).total_seconds():.3f}"
                         f" | Current precision: {self.current_prec:.3e}",
-                        end="\r",
+                        # end="\r",
                         flush=True,
                     )
                 if self.current_prec < self.prec:
@@ -182,8 +189,7 @@ class VQA:
             else:
                 if print_it:
                     print(end="\r", flush=True)
-        self.params = [param.numpy() for param in self.params]
-        self.costs = self.costs.numpy()
+        self.params = [param for param in self.params]
         if print_it:
             print("\nDone!")
 
@@ -194,6 +200,7 @@ class QAOA(VQA):
         Jij,
         depth,
         steps,
+        shots=None,
         prec=1e-6,
         optimizer="grad_descent",
         opt_kwargs={},
@@ -204,6 +211,7 @@ class QAOA(VQA):
             Jij=Jij,
             depth=depth,
             steps=steps,
+            shots=shots,
             prec=prec,
             optimizer=optimizer,
             opt_kwargs=opt_kwargs,
@@ -223,6 +231,200 @@ class QAOA(VQA):
         qml.Barrier()
 
 
+class DQAOA:
+    def __init__(
+        self,
+        Jij,
+        depth,
+        steps,
+        num_iterations,
+        num_constants,
+        alg="qaoa",
+        prec=1e-6,
+        optimizer="grad_descent",
+        opt_kwargs={},
+        device="default.qubit",
+        num_core_err=20,
+    ):
+        self.Jij = Jij
+        self.depth = depth
+        self.steps = steps
+        self.alg = alg
+        self.prec = prec
+        self.optimizer = optimizer
+        self.opt_kwargs = opt_kwargs
+        self.device = device
+
+        # How many times to run sub-QAOAs
+        self.num_iterations = num_iterations
+        # How many bits to ignore in sub-QAOAs
+        self.num_constants = num_constants
+        # Length of global bit string
+        self.size = self.Jij.shape[0]
+        # Length of sub-bit string/size (number of qubits) of sub-QAOA
+        self.subsize = self.size - self.num_constants
+        # How many cores to use
+        self.num_cores = self.num_constants + 1
+        # Just in case, we don't wanna slam the computer with too many cores
+        if self.num_cores > num_core_err:
+            raise Exception(
+                f"Number of cores to be used is {self.num_cores} which is greater than"
+                f"the limit {num_core_err}. If this is ok, set `num_core_err` to a"
+                "greater number than `num_constants` + 1."
+            )
+
+        # How many sub-qaoa iterations we've done
+        self.subiter_count = 0
+        # Global bitstring
+        self.global_bs = list(numpy.random.choice([0, 1], self.size))
+        self.init_global_bs = self.global_bs
+        # self.global_bs = [0] * self.size
+        self.global_energy = self.calculate_energy(self.global_bs)
+        # Histories
+        self.energy_history = [self.global_energy]
+        self.bs_history = [self.global_bs]
+        self.iter_history = [0]
+        # self.total_energy_history = [self.global_energy]
+        # self.total_bs_history = [self.global_bs]
+
+    def create_sub_alg(self, Jij):
+        match self.alg:
+            case "qaoa":
+                Alg = QAOA
+            case "maqaoa":
+                Alg = MAQAOA
+            case "xqaoa":
+                Alg = XQAOA
+
+        alg = Alg(
+            Jij=Jij,
+            depth=self.depth,
+            steps=self.steps,
+            prec=self.prec,
+            optimizer=self.optimizer,
+            opt_kwargs=self.opt_kwargs,
+            device=self.device,
+        )
+        return alg
+
+    def get_most_likely_bitstrings(self, alg):
+        alg.optimize()
+        probs_dict = alg.get_probs(as_dict=True)
+        # Gets the highest probability bit string
+        top_bs = sorted(probs_dict.items(), reverse=True, key=lambda val: val[1])[0][0]
+
+        return top_bs, swap(top_bs)
+
+    def compare_energies(self, bit_inds, new_bits, iter_ind):
+        new_energies, new_bitstrings, new_iters = [], [], []
+        for bit_ind, bit in zip(bit_inds, new_bits):
+            new_bs = (
+                self.global_bs[:bit_ind] + [int(bit)] + self.global_bs[bit_ind + 1 :]
+            )
+            new_energy = self.calculate_energy(new_bs)
+
+            if new_energy < self.global_energy:
+                self.global_energy = new_energy
+                old_bs_str = "".join([str(b) for b in self.global_bs])
+                new_bs_str = "".join([str(b) for b in new_bs])
+                # self.global_bs = new_bs
+                print(f"    Global: {old_bs_str} --> {new_bs_str}")
+                new_energies.append(self.global_energy)
+                new_bitstrings.append(new_bs)
+                new_iters.append(iter_ind)
+                # self.energy_history.append(self.global_energy)
+                # self.bs_history.append(self.global_bs)
+                # self.iter_history.append(iter_ind)
+
+        return new_energies, new_bitstrings, new_iters
+
+    def calculate_energy(self, bitstring):
+        s = [2 * bit - 1 for bit in bitstring]
+        return s @ self.Jij @ s
+
+    def do_iteration(self, iter_bits, iter_ind):
+        # Create smaller weight matrix without the constant bits
+        reduced_Jij = self.Jij[iter_bits][:, iter_bits]
+        # Create algorithm class with said weightmatrix
+        alg = self.create_sub_alg(Jij=reduced_Jij)
+        # Run algorithm and find most likely bitstrings (there's 2)
+        bitstrings = self.get_most_likely_bitstrings(alg=alg)
+        # Randomly choose one of them (for now)
+        bitstring = choice(bitstrings)
+
+        if self.print_it:
+            sub_bs_str = ["x"] * self.size
+            for bit_ind, bit in zip(iter_bits, bitstring):
+                sub_bs_str[bit_ind] = bit
+            sorted_inds = numpy.argsort(iter_bits)
+            print(
+                f"  Bitstring to check: {''.join(sub_bs_str)} | "
+                f"{''.join(numpy.array(list(bitstring))[sorted_inds])} -- "
+                f"{', '.join([str(x) for x in iter_bits[sorted_inds]])}"
+            )
+
+        # Replace each bit with the sub-QAOA solution and check energy
+        new_energies, new_bitstrings, new_iters = self.compare_energies(
+            bit_inds=iter_bits, new_bits=bitstring, iter_ind=iter_ind
+        )
+
+        return new_energies, new_bitstrings, new_iters
+
+    def create_sub_bits(self):
+        sub_bits = numpy.empty(
+            (self.num_iterations, self.num_cores, self.subsize), dtype=int
+        )
+        # init_bits = sliding_window_view(numpy.arange(self.size), window_shape=self.subsize)
+        for iter_ind in range(self.num_iterations):
+            for core_ind in range(self.num_cores):
+                bit_choice = numpy.random.choice(
+                    range(self.size), self.subsize, replace=False
+                )
+                sub_bits[iter_ind][core_ind] = bit_choice
+
+        return sub_bits
+
+    def run_pool(self, print_it=False):
+        self.sub_bits = self.create_sub_bits()
+        self.print_it = print_it
+
+        for iter_ind, iter_bits in enumerate(self.sub_bits):
+            if self.print_it:
+                if iter_ind:
+                    print()
+                print(
+                    f"  -----   {iter_ind + 1}/{self.num_iterations}   -----  ",
+                    flush=True,
+                )
+            with Pool(self.num_cores) as pool:
+                new_data = pool.starmap(
+                    self.do_iteration, zip(iter_bits, [iter_ind] * self.num_cores)
+                )
+                new_energies = [n for new_datum in new_data for n in new_datum[0]]
+                new_bitstrings = [n for new_datum in new_data for n in new_datum[1]]
+                new_iters = [n for new_datum in new_data for n in new_datum[2]]
+
+                if new_energies:
+                    min_ind = np.argmin(new_energies)
+
+                    if new_energies[min_ind] < self.global_energy:
+                        old_bitstring = self.global_bs
+                        old_energy = self.global_energy
+                        self.global_bs = new_bitstrings[min_ind]
+                        self.global_energy = new_energies[min_ind]
+                        self.energy_history.append(self.global_energy)
+                        self.bs_history.append(self.global_bs)
+                        self.iter_history.append(new_iters)
+
+                        if self.print_it:
+                            old_bs_str = "".join([str(x) for x in old_bitstring])
+                            g_bs_str = "".join([str(x) for x in self.global_bs])
+                            print(f"New bitstring: {old_bs_str} --> {g_bs_str}")
+                            print(
+                                f"New energy: {old_energy:.4f} --> {self.global_energy}"
+                            )
+
+
 class MAQAOA(VQA):
     """
     Instead of a free parameter per layer for the cost Hamiltonian and the mixer
@@ -236,6 +438,7 @@ class MAQAOA(VQA):
         Jij,
         depth,
         steps,
+        shots=None,
         prec=1e-6,
         optimizer="grad_descent",
         opt_kwargs={},
@@ -246,6 +449,7 @@ class MAQAOA(VQA):
             Jij=Jij,
             depth=depth,
             steps=steps,
+            shots=shots,
             prec=prec,
             optimizer=optimizer,
             opt_kwargs=opt_kwargs,
@@ -293,6 +497,7 @@ class HYBRID_MAQAOA(VQA):
         Jij,
         depth,
         steps,
+        shots=None,
         prec=1e-6,
         optimizer="grad_descent",
         opt_kwargs={},
@@ -303,6 +508,7 @@ class HYBRID_MAQAOA(VQA):
             Jij=Jij,
             depth=depth,
             steps=steps,
+            shots=shots,
             prec=prec,
             optimizer=optimizer,
             opt_kwargs=opt_kwargs,
@@ -333,6 +539,7 @@ class XQAOA(VQA):
         Jij,
         depth,
         steps,
+        shots=None,
         prec=1e-6,
         optimizer="grad_descent",
         opt_kwargs={},
@@ -343,6 +550,7 @@ class XQAOA(VQA):
             Jij=Jij,
             depth=depth,
             steps=steps,
+            shots=shots,
             prec=prec,
             optimizer=optimizer,
             opt_kwargs=opt_kwargs,
@@ -380,12 +588,15 @@ class FALQON:
     only needs to run a circuit of 1 layer deep.
     """
 
-    def __init__(self, Jij, depth, dt=0.08, init_beta=0, device="default.qubit"):
+    def __init__(
+        self, Jij, depth, dt=0.08, init_beta=0, shots=None, device="default.qubit"
+    ):
         self._Jij = Jij
         self.max_Jij = np.max(Jij)
         # Keep the quadratic coefficient normalized
         self.Jij = self._Jij / self.max_Jij
         self.depth = depth
+        self.shots = shots
         # Number of final state particles in problem
         self.N = len(Jij)
 
@@ -476,7 +687,6 @@ class FALQON:
         Gets the probabilities for each eigenstate.
         """
         probs_qnode = qml.QNode(self._probs_circuit, self.device)
-        # probs = probs_qnode().numpy()
         probs = probs_qnode()
         if as_dict:
             return dict(zip(self.bit_strs, probs))
@@ -512,14 +722,14 @@ class FALQON:
             self.depth_probs.append(self.get_probs(True))
             # Save state and parameter for next layer
             self._cur_state = state_qnode()
-            self._new_beta = -beta.numpy()
+            self._new_beta = -beta
 
         self.betas = numpy.array(self.betas)
         # To put in same format as with the parameters for other algorithms
         self.params = [self.betas]
 
         if print_it:
-            print("\Done!")
+            print("\nDone!")
 
 
 class WSQAOA(VQA):
