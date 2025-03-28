@@ -40,6 +40,8 @@ parser.add_argument("--indlims", "-i", required=True, type=int, nargs=2)
 parser.add_argument("--uid", "-u", type=int)
 # Depth of circuit
 parser.add_argument("--depth", "-d", required=True, type=int)
+# Number of shots, if not given will do infinite
+parser.add_argument("--shots", "-s", required=False)
 # If set, will not run simulation or save data at the end
 parser.add_argument("--dryrun", action=BooleanOptionalAction, default=False)
 # Lower limits for invariant mass
@@ -54,7 +56,7 @@ parser.add_argument(
     "--optimizer", "-o", type=str, default=DEFAULT_OPTIMIZER, choices=OPTIMIZERS
 )
 # Stepsize of optimizer
-parser.add_argument("--stepsize", "-s", default=DEFAULT_STEPSIZE, type=float)
+parser.add_argument("--stepsize", default=DEFAULT_STEPSIZE, type=float)
 ## ARGUMENTS FOR FALQON
 # Time step
 parser.add_argument("--dt", "-t", default=DEFAULT_DT, type=float)
@@ -84,6 +86,7 @@ for ind in range(len(args.invmlow)):
             f"--event {args.event}",
             f"--dtype {args.dtype}",
             f"--quadcoeff {args.quadcoeff}",
+            f"--shots {args.shots}",
             f"--indlims {str(args.indlims[0])} {str(args.indlims[1])}",
             f"--invmlims {str(invmlow)} {str(invmhi)}",
             f"--uid {str(args.uid)}" if args.uid is not None else "",
