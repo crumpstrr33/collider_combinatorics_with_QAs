@@ -134,7 +134,14 @@ class VQA:
             return dict(zip(self.bit_strs, probs))
         return probs
 
-    def optimize(self, init_params=None, print_it=False, print_pref="", init_val=0.5):
+    def optimize(
+        self,
+        init_params=None,
+        print_it=False,
+        print_pref="",
+        print_newlines=False,
+        init_val=0.5,
+    ):
         """
         Runs the optimization for given initial parameters. The shapes of those
         parameters should defined in a list as `self.param_shapes` in the __init__
@@ -178,7 +185,7 @@ class VQA:
                         f"Calculating step {ind + 1}/{self.steps}..."
                         f" Time: {(dt.now() - start).total_seconds():.3f}"
                         f" | Current precision: {self.current_prec:.3e}",
-                        # end="\r",
+                        end="\n" if print_newlines else "\r",
                         flush=True,
                     )
                 if self.current_prec < self.prec:
