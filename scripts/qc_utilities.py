@@ -7,11 +7,12 @@ import warnings
 from itertools import product
 from math import sqrt
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Optional, Sequence, TypeVar
 
 import numpy as np
-from nptyping import Bool, Float, NDArray, Shape
 from numba import njit
+from numpy.typing import NDArray
+from typing_extensions import Annotated
 
 try:
     from constants import (
@@ -31,13 +32,16 @@ except ImportError:
         NOISY_DIR,
         OUTPUT_DIR,
     )
+
 warnings.filterwarnings("ignore")
 
-_p4s = NDArray[Shape["*, NumFSP, 4"], Float]
-_p4 = NDArray[Shape["NumFSP, 4"], Float]
-_Jijs = NDArray[Shape["*, NumFSP, NumFSP"], Float]
-_Pijs = NDArray[Shape["*, NumFSP"], Float]
-_bs_bools = NDArray[Shape["*, 2, NumFSP"], Bool]
+# Types
+num_fsp = TypeVar("numFSP", bound=int)
+p4s_type = Annotated[NDArray[np.float64], ("shape", (..., num_fsp, 4))]
+p4_type = Annotated[NDArray[np.float64], ("shape", (num_fsp, 4))]
+Jijs_type = Annotated[NDArray[np.float64], ("shape", (..., num_fsp, num_fsp))]
+Pijs_type = Annotated[NDArray[np.float64], ("shape", (..., num_fsp, num_fsp))]
+bs_type = Annotated[NDArray[np.bool], ("shape", (..., 2, num_fsp))]
 
 
 def swap(bs: str) -> str:
@@ -84,7 +88,7 @@ def bit_string_str_combinations(num_fsp):
     return np.array(bs_combs)
 
 
-def _mass_norm(p4: _p4, etype: Optional[str] = None) -> float:
+def _mass_norm(p4: p4_type, etype: Optional[str] = None) -> float:
     """
     Gets the proper mass normalization. If `etype` is known, will just use that to
     pull from `MASS_NORM_DICT`. Otherwise, find number of FSP from `p4` (assuming `p4`)
@@ -96,7 +100,7 @@ def _mass_norm(p4: _p4, etype: Optional[str] = None) -> float:
     return MASS_NORM_DICT[etype]
 
 
-def format_p4s(p4s: _p4s, etype: Optional[str] = None, return_extra: bool = False):
+def format_p4s(p4s: p4s_type, etype: Optional[str] = None, return_extra: bool = False):
     """
     Assuming the 4-momentum array is of shape:
         (num_evts, num_fsp, 4) or (num_evts, 4 * num_fsp + is_invm)
@@ -146,7 +150,7 @@ def format_p4s(p4s: _p4s, etype: Optional[str] = None, return_extra: bool = Fals
     return formatted_p4s
 
 
-def get_Jijs_Pijs(p4s: _p4s) -> (_Jijs, _Pijs):
+def get_Jijs_Pijs(p4s: p4s_type) -> (Jijs_type, Pijs_type):
     """
     Wrapper to jitted function to find the Jij and Pij terms for events.
 
@@ -174,12 +178,12 @@ def get_Jijs_Pijs(p4s: _p4s) -> (_Jijs, _Pijs):
 
 @njit
 def _get_Jijs_Pijs(
-    p4s: _p4s,
+    p4s: p4s_type,
     N: int,
     num_fsp: int,
     Pij_iter: Sequence[tuple[int]],
     Jij_iter: Sequence[tuple[int]],
-) -> (_Jijs, _Pijs):
+) -> (Jijs_type, Pijs_type):
     """
     Jitted function to calculate Jij and Pij for events
     """
@@ -207,9 +211,9 @@ def _get_Jijs_Pijs(
 
 def get_lambdas(
     ltype: str,
-    p4s: Optional[_p4s] = None,
-    Jijs: Optional[_Jijs] = None,
-    Pijs: Optional[_Pijs] = None,
+    p4s: Optional[p4s_type] = None,
+    Jijs: Optional[Jijs_type] = None,
+    Pijs: Optional[Pijs_type] = None,
 ) -> Sequence[float]:
     """
     Returns lambda values (the coefficient of the H1 term of the Hamiltonian) by either
@@ -249,9 +253,9 @@ def get_lambdas(
 
 def get_coeffs(
     htype: str,
-    p4s: Optional[_p4s] = None,
-    Jijs: Optional[_Jijs] = None,
-    Pijs: Optional[_Pijs] = None,
+    p4s: Optional[p4s_type] = None,
+    Jijs: Optional[Jijs_type] = None,
+    Pijs: Optional[Pijs_type] = None,
     lambdas: Optional[Sequence[float]] = None,
 ) -> Sequence[float]:
     """
@@ -297,7 +301,7 @@ def get_coeffs(
 
 def get_minimum_energies(
     htype: str,
-    p4s: _p4s,
+    p4s: p4s_type,
     lambdas: Optional[Sequence[float]] = None,
     ltype: Optional[str] = None,
 ) -> Sequence[float]:
@@ -336,7 +340,7 @@ def get_minimum_energies(
 
 
 @njit
-def _get_minimum_energies(htype: str, p4s: _p4s, lambdas: Sequence[float], bit_string_indices: _bs_bools):
+def _get_minimum_energies(htype: str, p4s: p4s_type, lambdas: Sequence[float], bit_string_indices: bs_type):
     """
     Jitted function to find ground and first excited states for the Hamiltonian.
     """
@@ -385,7 +389,7 @@ def _get_minimum_energies(htype: str, p4s: _p4s, lambdas: Sequence[float], bit_s
 
 
 @njit
-def get_bitstring_energy(p4: _p4, bs: str, htype: str, lmbda: float = 1.0):
+def get_bitstring_energy(p4: p4_type, bs: str, htype: str, lmbda: float = 1.0):
     """
     Returns the energy for a given bitstring. If `htype="QA"`, then `lmbda` should be
     specified.
@@ -421,7 +425,7 @@ def get_bitstring_energy(p4: _p4, bs: str, htype: str, lmbda: float = 1.0):
 
 @njit
 def get_all_bitstring_energies(
-    p4s: _p4s,
+    p4s: p4s_type,
     bss: list[str],
     htype: str,
     lambdas: Optional[Sequence[float]] = None,
@@ -442,7 +446,7 @@ def get_all_bitstring_energies(
 
 
 @njit
-def get_masses(p4s: _p4s, bss: Sequence[str]):
+def get_masses(p4s: p4s_type, bss: Sequence[str]):
     """
     Finds the masses given for a given list of 4-momenta for a given list of bitstrings.
     """
