@@ -4,7 +4,7 @@ from math import sqrt
 
 import numpy
 import pennylane as qml
-from pennylane import numpy as np
+from pennylane import numpy as qmlnp
 from scipy.special import comb
 
 
@@ -58,7 +58,7 @@ class VQA:
         device - The pennylane device to run on.
         """
         self._Jij = Jij
-        self.max_Jij = np.max(Jij)
+        self.max_Jij = qmlnp.max(Jij)
         self.Jij = self._Jij / self.max_Jij
         self.depth = depth
         self.steps = steps
@@ -71,9 +71,7 @@ class VQA:
         self.str_opt = optimizer
         self.optimizer = self.OPTIMIZERS[optimizer](**opt_kwargs)
 
-        self.bit_strs = numpy.array(
-            ["".join(bs) for bs in product(["0", "1"], repeat=self.N)]
-        )
+        self.bit_strs = numpy.array(["".join(bs) for bs in product(["0", "1"], repeat=self.N)])
         self.vertices = numpy.arange(self.N)
         self.edges = numpy.array(list(combinations(range(self.N), r=2)))
         self.weights = numpy.array([self.Jij[edge[0], edge[1]] for edge in self.edges])
@@ -143,34 +141,27 @@ class VQA:
         """
         self.params = init_params
         if self.params is None:
-            self.params = [init_val * np.ones(shape) for shape in self.param_shapes]
+            self.params = [init_val * qmlnp.ones(shape) for shape in self.param_shapes]
 
         # Make sure the shapes are correct
         for ind, shape in enumerate(self.param_shapes):
             if self.params[ind].shape != shape:
-                raise TypeError(
-                    f"Index {ind} of keyword `init_params` should be of shape "
-                    + f"{shape}, not {self.params[ind]}"
-                )
+                raise TypeError(f"Index {ind} of keyword `init_params` should be of shape " + f"{shape}, not {self.params[ind]}")
 
         # Create QNode (a la the decorator way)
         if self.bitflip_prob != 0:
-            noisy_device = qml.transforms.insert(
-                self.device, op=qml.BitFlip, op_args=self.bitflip_prob
-            )
+            noisy_device = qml.transforms.insert(self.device, op=qml.BitFlip, op_args=self.bitflip_prob)
             self.cost_qnode = qml.QNode(func=self._cost_circuit, device=noisy_device)
         else:
             self.cost_qnode = qml.QNode(func=self._cost_circuit, device=self.device)
 
         # Run through the steps of the optimizing
-        self.costs = np.empty(self.steps)
+        self.costs = qmlnp.empty(self.steps)
         self.evals = self.steps
         start = dt.now()
         for ind in range(self.steps):
             # Save the value of the cost per step too
-            self.params, self.costs[ind] = self.optimizer.step_and_cost(
-                self.cost_qnode, *self.params
-            )
+            self.params, self.costs[ind] = self.optimizer.step_and_cost(self.cost_qnode, *self.params)
             if ind:
                 self.current_prec = abs(1 - self.costs[ind - 1] / self.costs[ind])
                 if print_it:
@@ -338,11 +329,9 @@ class FALQON:
     only needs to run a circuit of 1 layer deep.
     """
 
-    def __init__(
-        self, Jij, depth, dt=0.08, init_beta=0, shots=None, device="default.qubit"
-    ):
+    def __init__(self, Jij, depth, dt=0.08, init_beta=0, shots=None, device="default.qubit"):
         self._Jij = Jij
-        self.max_Jij = np.max(Jij)
+        self.max_Jij = qmlnp.max(Jij)
         # Keep the quadratic coefficient normalized
         self.Jij = self._Jij / self.max_Jij
         self.depth = depth
@@ -353,9 +342,7 @@ class FALQON:
         self.device = qml.device(device, wires=self.N)
 
         # Stuff for weighting gates
-        self.bit_strs = numpy.array(
-            ["".join(bs) for bs in product(["0", "1"], repeat=self.N)]
-        )
+        self.bit_strs = numpy.array(["".join(bs) for bs in product(["0", "1"], repeat=self.N)])
         self.vertices = numpy.arange(self.N)
         self.edges = numpy.array(list(combinations(range(self.N), r=2)))
         self.weights = numpy.array([self.Jij[edge[0], edge[1]] for edge in self.edges])
@@ -371,7 +358,7 @@ class FALQON:
         # Temporarily stores the newest parameter
         self._new_beta = init_beta
         # Intial state to equal superposition (Hadamards on all qubits)
-        self._cur_state = sqrt(1 / 2**self.N) * np.ones(2**self.N)
+        self._cur_state = sqrt(1 / 2**self.N) * qmlnp.ones(2**self.N)
 
         # Commutator i[Hc, Hm] whose expval gives parameter of next layer
         comm_gates, comm_weights = [], []
