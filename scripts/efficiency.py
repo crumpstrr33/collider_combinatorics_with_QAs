@@ -37,7 +37,7 @@ from constants import (
 from my_favorite_things import save
 from pennylane_algs import FALQON, HYBRID_MAQAOA, MAQAOA, NO_WEIGHT_MAQAOA, QAOA, XQAOA
 from qc_utilities import (
-    format_m4s,
+    format_p4s,
     get_coeffs,
     get_lambdas,
     get_minimum_energies,
@@ -123,19 +123,19 @@ class Efficiency:
         """
         # Get all 4-momenta
         fpath = EVT_DIR / f"{self.etype}_{self.dtype}.npy"
-        self.m4s = np.load(fpath)
+        self.p4s = np.load(fpath)
 
         # Pick the correct events
-        self.m4s = self.m4s[self.chosen_inds]
+        self.p4s = self.p4s[self.chosen_inds]
         # Reshape data properly
-        self.num_fsp, self.m4s, self.invms = format_m4s(self.m4s, return_extra=True)
+        self.num_fsp, self.p4s, self.invms = format_p4s(self.p4s, return_extra=True)
         # Can be just Jij or Jij + 2λPij, etc
         if self.quadcoeff_str == "QA":
-            self.lambdas = get_lambdas(m4s=self.m4s, ltype="QA")
+            self.lambdas = get_lambdas(p4s=self.p4s, ltype="QA")
         else:
-            self.lambdas = np.ones(len(self.m4s))
+            self.lambdas = np.ones(len(self.p4s))
         self.quadcoeffs = get_coeffs(
-            m4s=self.m4s, htype=self.quadcoeff_str, lambdas=self.lambdas
+            p4s=self.p4s, htype=self.quadcoeff_str, lambdas=self.lambdas
         )
 
     def get_output_data(
@@ -180,12 +180,12 @@ class Efficiency:
         """
         # Bit strings that minimize the Hamiltonian found by brute force
         _, _, bf_bss, _ = get_minimum_energies(
-            m4s=self.m4s, htype=self.quadcoeff_str, lambdas=self.lambdas
+            p4s=self.p4s, htype=self.quadcoeff_str, lambdas=self.lambdas
         )
 
         self.datas = []
-        for ind, (quadcoeff, m4, invm) in enumerate(
-            zip(self.quadcoeffs, self.m4s, self.invms)
+        for ind, (quadcoeff, p4, invm) in enumerate(
+            zip(self.quadcoeffs, self.p4s, self.invms)
         ):
             # Event number
             evt = chosen_inds[ind]
@@ -237,7 +237,7 @@ class Efficiency:
                 # Coefficient of quadratic term of Hamiltonian normalized
                 "norm_quadcoeff": norm_quadcoeff,
                 # 4 momentum of event
-                "m4": m4,
+                "p4": p4,
                 # Index of event
                 "evt": evt,
                 # Dict of probabilities for bit strings

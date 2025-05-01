@@ -10,7 +10,7 @@ from argparse import ArgumentParser
 import numpy as np
 from constants import EVT_DIR, IND_DIR, SHOT_DIR
 from pennylane_algs import MAQAOA, QAOA
-from qc_utilities import format_m4s, get_coeffs, get_Jijs_Pijs, get_lambdas
+from qc_utilities import format_p4s, get_coeffs, get_Jijs_Pijs, get_lambdas
 
 DATA_PATH = EVT_DIR / "ttbar_parton.npy"
 
@@ -22,11 +22,11 @@ def get_data(ham):
     """
     Get coefficients for the Hamiltonian, e.g. the Jij matrix for H0.
     """
-    m4s = np.load(DATA_PATH)
-    m4s = format_m4s(m4s=m4s)
-    Jijs, Pijs = get_Jijs_Pijs(m4s=m4s)
-    lambdas = get_lambdas(ltype="QA", m4s=m4s, Jijs=Jijs, Pijs=Pijs)
-    coeffs = get_coeffs(htype=ham, m4s=m4s, Jijs=Jijs, Pijs=Pijs, lambdas=lambdas)
+    p4s = np.load(DATA_PATH)
+    p4s = format_p4s(p4s=p4s)
+    Jijs, Pijs = get_Jijs_Pijs(p4s=p4s)
+    lambdas = get_lambdas(ltype="QA", p4s=p4s, Jijs=Jijs, Pijs=Pijs)
+    coeffs = get_coeffs(htype=ham, p4s=p4s, Jijs=Jijs, Pijs=Pijs, lambdas=lambdas)
 
     return coeffs
 

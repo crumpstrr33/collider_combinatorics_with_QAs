@@ -33,8 +33,8 @@ except ImportError:
     )
 warnings.filterwarnings("ignore")
 
-_m4s = NDArray[Shape["*, NumFSP, 4"], Float]
-_m4 = NDArray[Shape["NumFSP, 4"], Float]
+_p4s = NDArray[Shape["*, NumFSP, 4"], Float]
+_p4 = NDArray[Shape["NumFSP, 4"], Float]
 _Jijs = NDArray[Shape["*, NumFSP, NumFSP"], Float]
 _Pijs = NDArray[Shape["*, NumFSP"], Float]
 _bs_bools = NDArray[Shape["*, 2, NumFSP"], Bool]
@@ -68,9 +68,7 @@ def bit_string_bool_combinations(num_fsp):
     Iterable of a tuple of bools representing every possible bit string and their
     inverse.
     """
-    all_bs_bools = np.array(
-        [[0] + list(x) for x in product([0, 1], repeat=num_fsp - 1)]
-    ).astype(bool)
+    all_bs_bools = np.array([[0] + list(x) for x in product([0, 1], repeat=num_fsp - 1)]).astype(bool)
     all_bs_bools = np.array([(x, np.invert(x)) for x in all_bs_bools])
 
     return all_bs_bools
@@ -82,83 +80,78 @@ def bit_string_str_combinations(num_fsp):
     1's and 0's.
     """
     bs_combs = bit_string_bool_combinations(num_fsp)
-    bs_combs = [
-        "".join(bs) for bs in bs_combs.astype(int).astype(str).reshape(-1, num_fsp)
-    ]
+    bs_combs = ["".join(bs) for bs in bs_combs.astype(int).astype(str).reshape(-1, num_fsp)]
     return np.array(bs_combs)
 
 
-def _mass_norm(m4: _m4, etype: Optional[str] = None) -> float:
+def _mass_norm(p4: _p4, etype: Optional[str] = None) -> float:
     """
     Gets the proper mass normalization. If `etype` is known, will just use that to
-    pull from `MASS_NORM_DICT`. Otherwise, find number of FSP from `m4` (assuming `m4`)
+    pull from `MASS_NORM_DICT`. Otherwise, find number of FSP from `p4` (assuming `p4`)
     is in shape (num_fsp, 4).
     """
     if etype is None:
         # Assume 6 particles means ttbar and 5 mean tW. If ambiguous, must pass `etype`
-        etype = {12: "4top", 6: "ttbar", 5: "tW"}[m4.shape[0]]
+        etype = {12: "4top", 6: "ttbar", 5: "tW"}[p4.shape[0]]
     return MASS_NORM_DICT[etype]
 
 
-def format_m4s(m4s: _m4s, etype: Optional[str] = None, return_extra: bool = False):
+def format_p4s(p4s: _p4s, etype: Optional[str] = None, return_extra: bool = False):
     """
     Assuming the 4-momentum array is of shape:
-        (num_evts, num_fsp, 4) or (num_evts, 4 * num_fsp + is_mtt)
+        (num_evts, num_fsp, 4) or (num_evts, 4 * num_fsp + is_invm)
     where
         `num_evts` is the number of total events,
         `num_fsp` is the number of final state particles
-        `is_mtt` is 1 if the invariant mass is included, otherwise it's 0
+        `is_invm` is 1 if the invariant mass is included, otherwise it's 0
         4 are the components of the 4-momentum.
 
     Return the number of final state particles, the 4-momentum in the shape:
         (num_evts, num_fsp, 4),
     and the invariant mass normalized by 2*mt
     """
-    m4_shape = m4s.shape[1:]
+    p4_shape = p4s.shape[1:]
 
     # Numpy shape: (num_evts, num_fsp, 4)
-    if len(m4_shape) == 2:
-        if m4_shape[1] != 4:
-            raise Exception(f"Last dimension should be 4, not {m4_shape[1]}.")
+    if len(p4_shape) == 2:
+        if p4_shape[1] != 4:
+            raise Exception(f"Last dimension should be 4, not {p4_shape[1]}.")
 
-        num_fsp = m4_shape[0]
+        num_fsp = p4_shape[0]
         # Already in the correct form
-        formatted_m4s = m4s
-        mass_norm = _mass_norm(formatted_m4s[0], etype)
+        formatted_p4s = p4s
+        mass_norm = _mass_norm(formatted_p4s[0], etype)
 
-        mtts = np.empty(len(m4s))
+        invms = np.empty(len(p4s))
         # Iterate through for all the invariant masses
-        for ind, m4 in enumerate(m4s):
-            summed_m4 = np.sum(m4, axis=0)
-            mass = sqrt(np.dot(summed_m4, METRIC * summed_m4))
-            mtts[ind] = mass / mass_norm
-    # Numpy shape: (num_evts, 4 * num_fsp + is_mtt)
-    elif len(m4_shape) == 1:
+        for ind, p4 in enumerate(p4s):
+            summed_p4 = np.sum(p4, axis=0)
+            mass = sqrt(np.dot(summed_p4, METRIC * summed_p4))
+            invms[ind] = mass / mass_norm
+    # Numpy shape: (num_evts, 4 * num_fsp + is_invm)
+    elif len(p4_shape) == 1:
         # There is one extra entry for invariant mass
-        if (m4_shape[0] - 1) % 4 != 0:
-            raise Exception(
-                f"2nd dimension is {m4_shape[0]} which isn't one more than "
-                "a number divisble by 4."
-            )
+        if (p4_shape[0] - 1) % 4 != 0:
+            raise Exception(f"2nd dimension is {p4_shape[0]} which isn't one more than a number divisble by 4.")
 
-        num_fsp = m4_shape[0] // 4
+        num_fsp = p4_shape[0] // 4
         # Remove last entry since it's the invariant mass
-        formatted_m4s = m4s[:, :-1].reshape(-1, num_fsp, 4)
-        mass_norm = _mass_norm(formatted_m4s[0], etype)
+        formatted_p4s = p4s[:, :-1].reshape(-1, num_fsp, 4)
+        mass_norm = _mass_norm(formatted_p4s[0], etype)
 
-        mtts = m4s[:, -1] / mass_norm
+        invms = p4s[:, -1] / mass_norm
 
     if return_extra:
-        return num_fsp, formatted_m4s, mtts
-    return formatted_m4s
+        return num_fsp, formatted_p4s, invms
+    return formatted_p4s
 
 
-def get_Jijs_Pijs(m4s: _m4s) -> (_Jijs, _Pijs):
+def get_Jijs_Pijs(p4s: _p4s) -> (_Jijs, _Pijs):
     """
     Wrapper to jitted function to find the Jij and Pij terms for events.
 
     Parameters:
-    m4s - MxNx4 array of 4-momentum for each particle where M is the number of events,
+    p4s - MxNx4 array of 4-momentum for each particle where M is the number of events,
         and N is the number of final state particles per event
 
     Returns (
@@ -166,10 +159,10 @@ def get_Jijs_Pijs(m4s: _m4s) -> (_Jijs, _Pijs):
         NxN Pij momentum matrix
     )
     """
-    N = m4s.shape[0]
-    num_fsp = m4s.shape[1]
+    N = p4s.shape[0]
+    num_fsp = p4s.shape[1]
     Jijs, Pijs = _get_Jijs_Pijs(
-        m4s=m4s,
+        p4s=p4s,
         N=N,
         num_fsp=num_fsp,
         Pij_iter=list(Pij_sum_iter(num_fsp=num_fsp)),
@@ -181,7 +174,7 @@ def get_Jijs_Pijs(m4s: _m4s) -> (_Jijs, _Pijs):
 
 @njit
 def _get_Jijs_Pijs(
-    m4s: _m4s,
+    p4s: _p4s,
     N: int,
     num_fsp: int,
     Pij_iter: Sequence[tuple[int]],
@@ -194,11 +187,11 @@ def _get_Jijs_Pijs(
     Jijs = np.zeros((N, num_fsp, num_fsp))
     Pijs = np.zeros((N, num_fsp, num_fsp))
 
-    for ind, m4 in enumerate(m4s):
+    for ind, p4 in enumerate(p4s):
         # Calculate Pij
         Pij = np.zeros((num_fsp, num_fsp))
         for i, j in Pij_iter:
-            Pij[i, j] = np.dot(m4[i], METRIC * m4[j])
+            Pij[i, j] = np.dot(p4[i], METRIC * p4[j])
 
         # Calculate Jij
         Jij = np.zeros((num_fsp, num_fsp))
@@ -214,7 +207,7 @@ def _get_Jijs_Pijs(
 
 def get_lambdas(
     ltype: str,
-    m4s: Optional[_m4s] = None,
+    p4s: Optional[_p4s] = None,
     Jijs: Optional[_Jijs] = None,
     Pijs: Optional[_Pijs] = None,
 ) -> Sequence[float]:
@@ -225,13 +218,11 @@ def get_lambdas(
                         H = H0 + λH1
     so this method calculates various choices for λ.
     """
-    if m4s is None and (Jijs is None or Pijs is None):
-        raise Exception(
-            "Either m4s must be defined or both Jijs and Pijs must be defined."
-        )
+    if p4s is None and (Jijs is None or Pijs is None):
+        raise Exception("Either p4s must be defined or both Jijs and Pijs must be defined.")
 
     if Jijs is None or Pijs is None:
-        Jijs, Pijs = get_Jijs_Pijs(m4s)
+        Jijs, Pijs = get_Jijs_Pijs(p4s)
     else:
         assert Jijs.shape == Pijs.shape
 
@@ -258,7 +249,7 @@ def get_lambdas(
 
 def get_coeffs(
     htype: str,
-    m4s: Optional[_m4s] = None,
+    p4s: Optional[_p4s] = None,
     Jijs: Optional[_Jijs] = None,
     Pijs: Optional[_Pijs] = None,
     lambdas: Optional[Sequence[float]] = None,
@@ -267,25 +258,23 @@ def get_coeffs(
     Finds the coefficient for the Hamiltonian when written in terms of spin values, i.e.
     the Hamiltonian is:
                         H = sum_{ij}C_{ij}s_is_j
-    where C_{ij} is a matrix of values. Either calculates the Jijs and Pijs from the m4s
+    where C_{ij} is a matrix of values. Either calculates the Jijs and Pijs from the p4s
     or just used them Jijs and Pijs if passed explicitly. If `htype="QA"` then then
     lambdas must be passed
     """
-    if m4s is None and (Jijs is None or Pijs is None):
-        raise Exception(
-            "Either m4s must be defined or both Jijs and Pijs must be defined."
-        )
+    if p4s is None and (Jijs is None or Pijs is None):
+        raise Exception("Either p4s must be defined or both Jijs and Pijs must be defined.")
 
     if Jijs is None or Pijs is None:
         # Make sure it's an array of 4-momentum (if only 1 event is passed)
-        if len(m4s.shape) == 2:
-            m4s = m4s.reshape(1, -1, 4)
-        Jijs, Pijs = get_Jijs_Pijs(m4s)
+        if len(p4s.shape) == 2:
+            p4s = p4s.reshape(1, -1, 4)
+        Jijs, Pijs = get_Jijs_Pijs(p4s)
     else:
         assert Jijs.shape == Pijs.shape
 
-    num_fsp = m4s.shape[1] if m4s is not None else Jijs.shape[1]
-    N = m4s.shape[0] if m4s is not None else Jijs.shape[0]
+    num_fsp = p4s.shape[1] if p4s is not None else Jijs.shape[1]
+    N = p4s.shape[0] if p4s is not None else Jijs.shape[0]
     coeffs = np.zeros((N, num_fsp, num_fsp))
     match htype:
         case "H0":
@@ -297,10 +286,7 @@ def get_coeffs(
                 raise Exception(f"`lambdas` must be defined if `htype={htype}` (QA).")
             if len(lambdas) != len(Jijs) or len(lambdas) != len(Pijs):
                 print(lambdas)
-                raise Exception(
-                    f"`lambdas`, `Pijs` and `Jijs` must all have the same length, but "
-                    f"{len(lambdas)=}, {len(Jijs)=} and {len(Pijs)=}."
-                )
+                raise Exception(f"`lambdas`, `Pijs` and `Jijs` must all have the same length, but {len(lambdas)=}, {len(Jijs)=} and {len(Pijs)=}.")
             # Do this silly thing to create arrays of proper shape
             lmbdas_mat = np.full(Pijs.T.shape, lambdas).T
             # To do this arithmatic correctly
@@ -311,7 +297,7 @@ def get_coeffs(
 
 def get_minimum_energies(
     htype: str,
-    m4s: _m4s,
+    p4s: _p4s,
     lambdas: Optional[Sequence[float]] = None,
     ltype: Optional[str] = None,
 ) -> Sequence[float]:
@@ -321,20 +307,18 @@ def get_minimum_energies(
     `lambdas` must be given or `ltype` (the latter of which will then calculate the
     chose of lambda).
     """
-    num_fsp = m4s.shape[1]
+    num_fsp = p4s.shape[1]
     # Every combination for the bit strings as an array of booleans
     bit_string_indices = bit_string_bool_combinations(num_fsp)
 
     if lambdas is None:
         if htype == "QA":
             if ltype is None:
-                raise Exception(
-                    "If `htype=='QA'` and `lambdas=None`, then `ltype` must be defined."
-                )
-            Jijs, Pijs = get_Jijs_Pijs(m4s)
+                raise Exception("If `htype=='QA'` and `lambdas=None`, then `ltype` must be defined.")
+            Jijs, Pijs = get_Jijs_Pijs(p4s)
             lambdas = get_lambdas(ltype=ltype, Jijs=Jijs, Pijs=Pijs)
         else:
-            lambdas = np.zeros(len(m4s))
+            lambdas = np.zeros(len(p4s))
 
     (
         min_energies,
@@ -343,7 +327,7 @@ def get_minimum_energies(
         min2nd_bitstrings,
     ) = _get_minimum_energies(
         htype=htype,
-        m4s=m4s,
+        p4s=p4s,
         lambdas=lambdas,
         bit_string_indices=bit_string_indices,
     )
@@ -352,22 +336,20 @@ def get_minimum_energies(
 
 
 @njit
-def _get_minimum_energies(
-    htype: str, m4s: _m4s, lambdas: Sequence[float], bit_string_indices: _bs_bools
-):
+def _get_minimum_energies(htype: str, p4s: _p4s, lambdas: Sequence[float], bit_string_indices: _bs_bools):
     """
     Jitted function to find ground and first excited states for the Hamiltonian.
     """
-    min_energies = np.empty(len(m4s), dtype=float)
-    min2nd_energies = np.empty(len(m4s), dtype=float)
-    min_bitstrings = np.empty(len(m4s), dtype="U6")
-    min2nd_bitstrings = np.empty(len(m4s), dtype="U6")
+    min_energies = np.empty(len(p4s), dtype=float)
+    min2nd_energies = np.empty(len(p4s), dtype=float)
+    min_bitstrings = np.empty(len(p4s), dtype="U6")
+    min2nd_bitstrings = np.empty(len(p4s), dtype="U6")
 
-    for ind, (m4, lmbda) in enumerate(zip(m4s, lambdas)):
+    for ind, (p4, lmbda) in enumerate(zip(p4s, lambdas)):
         min_energy, min2nd_energy = 1e15, 1e15
         for bool1, bool2 in bit_string_indices:
-            p1 = np.sum(m4[bool1], axis=0)
-            p2 = np.sum(m4[bool2], axis=0)
+            p1 = np.sum(p4[bool1], axis=0)
+            p2 = np.sum(p4[bool2], axis=0)
 
             m1sq = np.dot(p1, METRIC * p1)
             m2sq = np.dot(p2, METRIC * p2)
@@ -403,7 +385,7 @@ def _get_minimum_energies(
 
 
 @njit
-def get_bitstring_energy(m4: _m4, bs: str, htype: str, lmbda: float = 1.0):
+def get_bitstring_energy(p4: _p4, bs: str, htype: str, lmbda: float = 1.0):
     """
     Returns the energy for a given bitstring. If `htype="QA"`, then `lmbda` should be
     specified.
@@ -417,10 +399,10 @@ def get_bitstring_energy(m4: _m4, bs: str, htype: str, lmbda: float = 1.0):
 
     p1 = np.zeros(4)
     for b in bool1:
-        p1 += m4[b]
+        p1 += p4[b]
     p2 = np.zeros(4)
     for b in bool2:
-        p2 += m4[b]
+        p2 += p4[b]
 
     m1sq = np.dot(p1, METRIC * p1)
     m2sq = np.dot(p2, METRIC * p2)
@@ -439,7 +421,7 @@ def get_bitstring_energy(m4: _m4, bs: str, htype: str, lmbda: float = 1.0):
 
 @njit
 def get_all_bitstring_energies(
-    m4s: _m4s,
+    p4s: _p4s,
     bss: list[str],
     htype: str,
     lambdas: Optional[Sequence[float]] = None,
@@ -449,29 +431,29 @@ def get_all_bitstring_energies(
     """
     # Just use ones if lambdas aren't used
     if lambdas is None:
-        lambdas = np.ones(len(m4s))
-    bs_energies = np.zeros((len(m4s), len(bss)), dtype=float)
-    for evt_ind, (m4, lmbda) in enumerate(zip(m4s, lambdas)):
+        lambdas = np.ones(len(p4s))
+    bs_energies = np.zeros((len(p4s), len(bss)), dtype=float)
+    for evt_ind, (p4, lmbda) in enumerate(zip(p4s, lambdas)):
         for bs_ind, bs in enumerate(bss):
-            energy = get_bitstring_energy(m4=m4, bs=bs, htype=htype, lmbda=lmbda)
+            energy = get_bitstring_energy(p4=p4, bs=bs, htype=htype, lmbda=lmbda)
             bs_energies[evt_ind][bs_ind] = energy
 
     return bs_energies
 
 
 @njit
-def get_masses(m4s: _m4s, bss: Sequence[str]):
+def get_masses(p4s: _p4s, bss: Sequence[str]):
     """
     Finds the masses given for a given list of 4-momenta for a given list of bitstrings.
     """
-    N = len(m4s)
+    N = len(p4s)
     Nq = len(bss[0])
     num_jets0 = np.zeros(len(bss[0]) + 1)
     num_jets1 = np.zeros(len(bss[0]) + 1)
     m1s = np.zeros(N, dtype=float)
     m2s = np.zeros(N, dtype=float)
     for ind in range(N):
-        m4 = m4s[ind]
+        p4 = p4s[ind]
         bs = bss[ind]
         num_jet0 = str(bs).count("0")
         num_jet1 = str(bs).count("1")
@@ -482,9 +464,9 @@ def get_masses(m4s: _m4s, bss: Sequence[str]):
         p1, p2 = np.zeros(4), np.zeros(4)
         for qind in range(Nq):
             if bs[qind] == "0":
-                p1 += m4[qind]
+                p1 += p4[qind]
             else:
-                p2 += m4[qind]
+                p2 += p4[qind]
 
         m1 = sqrt(np.dot(p1, METRIC * p1))
         m2 = sqrt(np.dot(p2, METRIC * p2))
@@ -533,9 +515,7 @@ def get_Nevts(names):
     """
     # If we are passed just a file or directory name
     if isinstance(names, str):
-        etype, dtype, alg, quadcoeff, depth = get_info(
-            names, ["etype", "dtype", "alg", "quadcoeff", "depth"]
-        )
+        etype, dtype, alg, quadcoeff, depth = get_info(names, ["etype", "dtype", "alg", "quadcoeff", "depth"])
         names = get_files(
             ntype="file",
             ftype="eff",
@@ -683,9 +663,7 @@ def get_files(ntype, ftype, noise=False, **kwargs):
     data_dir = NOISY_DIR if noise else OUTPUT_DIR
     if ftype == "eff":
         if noise:
-            re_dir_name = (
-                f"eff_{err_prob}{etype}_{dtype}_{alg}_{quadcoeff}_p{depth}{falqon}"
-            )
+            re_dir_name = f"eff_{err_prob}{etype}_{dtype}_{alg}_{quadcoeff}_p{depth}{falqon}"
         else:
             re_dir_name = f"eff_{etype}_{dtype}_{alg}_{quadcoeff}_p{depth}{falqon}"
 

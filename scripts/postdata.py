@@ -56,7 +56,7 @@ from hemisphere import run_hemisphere
 from my_favorite_things import save
 from qc_utilities import (
     bit_string_str_combinations,
-    format_m4s,
+    format_p4s,
     get_all_bitstring_energies,
     get_all_depths,
     get_all_indices,
@@ -135,9 +135,9 @@ def calculate_data(
     """
     # First check to make sure there's an event file to use
     try:
-        m4s = format_m4s(np.load(EVT_DIR / f"{etype}_{dtype}.npy"))
+        p4s = format_p4s(np.load(EVT_DIR / f"{etype}_{dtype}.npy"))
         if indices is not None:
-            m4s = m4s[indices]
+            p4s = p4s[indices]
     except FileNotFoundError:
         print(f"{tabs(tab)}There is no event file: '{etype}_{dtype}.npy'\n")
         return
@@ -221,7 +221,7 @@ def calculate_data(
     # Jij/Pij are used in all other files, so check if those files need to be made too
     if do_JPijs:
         print(f"{tabs(tab)}Calculating Jijs and Pijs...")
-        Jijs, Pijs = get_Jijs_Pijs(m4s)
+        Jijs, Pijs = get_Jijs_Pijs(p4s)
         if not exists_JPijs:
             save(
                 name=JPijs_path.with_suffix("").name,
@@ -291,10 +291,10 @@ def calculate_data(
             # Doesn't look at symmetric strings, e.g. top two won't be "000111" and
             # "111000"
             min_eng, min2_eng, min_bs, min2_bs = get_minimum_energies(
-                htype=quadcoeff_choice, m4s=m4s, lambdas=lambdas
+                htype=quadcoeff_choice, p4s=p4s, lambdas=lambdas
             )
             bs_eng = get_all_bitstring_energies(
-                m4s=m4s, bss=bss, htype=quadcoeff_choice, lambdas=lambdas
+                p4s=p4s, bss=bss, htype=quadcoeff_choice, lambdas=lambdas
             )
 
             min_engs_dict[qcl] = min_eng
@@ -382,7 +382,7 @@ def calculate_data(
         masses_dict = {}
         num_jets_dict = {}
         for qcl, min_bss in min_bss_dict.items():
-            m1s, m2s, num_jets0, num_jets1 = get_masses(m4s=m4s, bss=min_bss)
+            m1s, m2s, num_jets0, num_jets1 = get_masses(p4s=p4s, bss=min_bss)
             masses_dict[f"min_{qcl}"] = [m1s, m2s]
             num_jets_dict[f"{qcl}0"] = num_jets0
             num_jets_dict[f"{qcl}1"] = num_jets1
@@ -390,7 +390,7 @@ def calculate_data(
 
         if etype != "6jet":
             correct_m1s, correct_m2s, _, _ = get_masses(
-                m4s=m4s, bss=np.full(len(m4s), correct_bs)
+                p4s=p4s, bss=np.full(len(p4s), correct_bs)
             )
             correct_masses = [correct_m1s, correct_m2s]
         else:
@@ -419,12 +419,12 @@ def calculate_data(
     if do_hemisphere:
         print(f"{tabs(tab)}Calculating hemisphere method results...")
         # 4-momentum should have each event array flattened
-        bss = run_hemisphere(m4s.reshape(len(m4s), -1))
+        bss = run_hemisphere(p4s.reshape(len(p4s), -1))
         # Turn from array of floats of 0's and 1's to string of 0's and 1's
         bss = np.array(["".join([str(int(bit)) for bit in bs]) for bs in bss])
         swapped_bss = np.array([swap(bs) for bs in bss])
 
-        m1s, m2s, num_jets0, num_jets1 = get_masses(m4s=m4s, bss=bss)
+        m1s, m2s, num_jets0, num_jets1 = get_masses(p4s=p4s, bss=bss)
         num_jetsboth = num_jets0 + num_jets1
 
         is_correct_bss = np.logical_or(bss == correct_bs, swapped_bss == correct_bs)
@@ -572,7 +572,7 @@ def calculate_alg_data(
                     raise Exception("AHHHH", etype, dtype, alg, quadcoeff, depth, invm)
 
                 N_evts = get_Nevts(files)
-                m4s = np.empty((N_evts, num_fsp, 4))
+                p4s = np.empty((N_evts, num_fsp, 4))
                 bss, bss2 = np.empty(N_evts, dtype="U6"), np.empty(N_evts, dtype="U6")
                 foffset = 0
                 # Cycle through the available files that fit the match
@@ -586,25 +586,25 @@ def calculate_alg_data(
                         bss[ind + foffset] = top_two[0][0]
                         bss2[ind + foffset] = top_two[1][0]
 
-                        m4s[ind + foffset] = datum["m4"]
+                        p4s[ind + foffset] = datum["p4"]
                     foffset += len(data)
 
                 if quadcoeff == "QA":
-                    lambdas = get_lambdas(ltype="QA", m4s=m4s)
+                    lambdas = get_lambdas(ltype="QA", p4s=p4s)
                 else:
-                    lambdas = np.ones(len(m4s))
+                    lambdas = np.ones(len(p4s))
 
-                engs = np.empty(len(m4s))
-                correct_engs = np.empty(len(m4s))
+                engs = np.empty(len(p4s))
+                correct_engs = np.empty(len(p4s))
                 # Find energies of these bitstrings
-                for ind, (m4, bs, bs2) in enumerate(zip(m4s, bss, bss2)):
+                for ind, (p4, bs, bs2) in enumerate(zip(p4s, bss, bss2)):
                     engs[ind] = get_bitstring_energy(
-                        m4=m4, bs=bs, htype=quadcoeff, lmbda=lambdas[ind]
+                        p4=p4, bs=bs, htype=quadcoeff, lmbda=lambdas[ind]
                     )
                     # And energy of the "correct" bit string, e.g. 000111
                     if correct_bs is not None:
                         correct_engs[ind] = get_bitstring_energy(
-                            m4=m4, bs=correct_bs, htype=quadcoeff, lmbda=lambdas[ind]
+                            p4=p4, bs=correct_bs, htype=quadcoeff, lmbda=lambdas[ind]
                         )
 
                 try:
@@ -636,7 +636,7 @@ def calculate_alg_data(
                 tot_min_effs.append(np.sum(is_min_bss))
                 tot_min2_effs.append(np.sum(is_min2_bss))
 
-                m1s, m2s, num_jets0, num_jets1 = get_masses(m4s=m4s, bss=bss)
+                m1s, m2s, num_jets0, num_jets1 = get_masses(p4s=p4s, bss=bss)
                 m1ss.append(m1s)
                 m2ss.append(m2s)
                 num_jetss0.append(num_jets0)
@@ -795,21 +795,21 @@ def calculate_falqon_data(savedir: str, dryrun: bool = True):
             if not files:
                 raise Exception("AHHHH", etype, dtype, quadcoeff, invm)
 
-            m4s = []
+            p4s = []
             bss = []
             for fname in files:
                 with open(fname, "rb") as f:
                     data = pickle.load(f)["data"]
 
                 for ind, datum in enumerate(data):
-                    m4s.append(datum["m4"])
+                    p4s.append(datum["p4"])
                     bss.append(datum["sym_depth_bss"])
-            m4s = np.array(m4s)
+            p4s = np.array(p4s)
             # Turn array from (N_evts, p) to (p, N_evts) so to iterate through by depth
             bss = np.array(bss).T
 
             lambdas = (
-                get_lambdas("QA", m4s=m4s) if quadcoeff == "QA" else np.ones(N_evts)
+                get_lambdas("QA", p4s=p4s) if quadcoeff == "QA" else np.ones(N_evts)
             )
 
             engs = []
@@ -820,15 +820,15 @@ def calculate_falqon_data(savedir: str, dryrun: bool = True):
                 # Hence the "depth_" prefix used
                 depth_engs = []
                 depth_correct_engs = []
-                for m4, bs, lmbda in zip(m4s, bss[p], lambdas):
+                for p4, bs, lmbda in zip(p4s, bss[p], lambdas):
                     depth_engs.append(
                         get_bitstring_energy(
-                            m4=m4, bs=bs, htype=quadcoeff, lmbda=lambdas[ind]
+                            p4=p4, bs=bs, htype=quadcoeff, lmbda=lambdas[ind]
                         )
                     )
                     depth_correct_engs.append(
                         get_bitstring_energy(
-                            m4=m4, bs=correct_bs, htype=quadcoeff, lmbda=lmbda
+                            p4=p4, bs=correct_bs, htype=quadcoeff, lmbda=lmbda
                         )
                     )
                 # Save the per-depth data here
@@ -851,7 +851,7 @@ def calculate_falqon_data(savedir: str, dryrun: bool = True):
             tot_min_effs[invm_ind] += is_min_bss
 
             for ind, depth_bss in enumerate(bss):
-                m1s, m2s, num_jets0, num_jets1 = get_masses(m4s=m4s, bss=depth_bss)
+                m1s, m2s, num_jets0, num_jets1 = get_masses(p4s=p4s, bss=depth_bss)
                 m1ss[ind][invm_ind] = m1s
                 m2ss[ind][invm_ind] = m2s
                 num_jetss0[ind][invm_ind] = num_jets0
