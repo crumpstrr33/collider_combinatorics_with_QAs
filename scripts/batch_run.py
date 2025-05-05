@@ -33,10 +33,11 @@ def main(
         1
     ]
     ind_lims = np.arange(0, evts_per_invm + 1, runs_per_invm_per_core)
+    ind_pairs = np.dstack((ind_lims[:-1], ind_lims[1:]))[0]
 
     print("\nCOMMANDS TO BE RAN:")
     cmds = []
-    for ind_lo, ind_hi in zip(ind_lims[:-1], ind_lims[1:]):
+    for ind_lo, ind_hi in ind_pairs:
         cmd = " ".join(
             [
                 "python",
@@ -62,7 +63,8 @@ def main(
 
     if cont.lower() == "y":
         os.makedirs(LOG_DIR, exist_ok=True)
-        for cmd in cmds:
+        for cmd, ind_pair in zip(cmds, ind_pairs):
+            ind_lo, ind_hi = ind_pair
             # Log file name
             log_file = (
                 f"log_{dtype}_{etype}_{alg}_p{depth}_{ind_lo}to{ind_hi}.log"
