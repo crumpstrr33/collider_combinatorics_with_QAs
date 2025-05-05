@@ -2,7 +2,7 @@ from datetime import datetime as dt
 from itertools import combinations, product
 from math import sqrt
 
-import numpy
+import numpy as np
 import pennylane as qml
 from pennylane import numpy as qmlnp
 from scipy.special import comb
@@ -24,11 +24,11 @@ class VQA:
 
     def __init__(
         self,
-        Jij,
+        coeff,
         depth,
         steps=None,
         shots=None,
-        prec=1e-4,
+        prec=1e-6,
         optimizer="adam",
         opt_kwargs={},
         device="default.qubit",
@@ -43,7 +43,7 @@ class VQA:
             `self.param_shapes`.
 
         Parameters:
-        Jij - Ising NxN matrix created from 4-momenta defined in 2111.07806.
+        coeff - Matrix of coefficients for s_i * s_j spin coupling.
         depth - How many layers in the circuit, written as `p`.
         steps - How many steps to run the optimizer.
         shots - Number of shots for the circuit, If None, use exact statevector, e.g.
@@ -57,24 +57,28 @@ class VQA:
         opt_kwargs - A dictionary of keyword arguments to pass to the optimizer object.
         device - The pennylane device to run on.
         """
-        self._Jij = Jij
-        self.max_Jij = qmlnp.max(Jij)
-        self.Jij = self._Jij / self.max_Jij
+        self._coeff = coeff
+        self.max_coeff = np.max(coeff)
+        self.coeff = self._coeff / self.max_coeff
         self.depth = depth
         self.steps = steps
         self.shots = shots
         self.prec = prec
-        self.N = len(Jij)
+        self.N = len(coeff)
         self.bitflip_prob = bitflip_prob
 
         self.device = qml.device(device, wires=self.N, shots=self.shots)
         self.str_opt = optimizer
         self.optimizer = self.OPTIMIZERS[optimizer](**opt_kwargs)
 
-        self.bit_strs = numpy.array(["".join(bs) for bs in product(["0", "1"], repeat=self.N)])
-        self.vertices = numpy.arange(self.N)
-        self.edges = numpy.array(list(combinations(range(self.N), r=2)))
-        self.weights = numpy.array([self.Jij[edge[0], edge[1]] for edge in self.edges])
+        self.bit_strs = np.array(
+            ["".join(bs) for bs in product(["0", "1"], repeat=self.N)]
+        )
+        self.vertices = np.arange(self.N)
+        self.edges = np.array(list(combinations(range(self.N), r=2)))
+        self.weights = np.array(
+            [self.coeff[edge[0], edge[1]] for edge in self.edges]
+        )
 
         # Expectation value operator: problem Hamiltonian
         self.expval_op = qml.Hamiltonian(
@@ -141,19 +145,30 @@ class VQA:
         """
         self.params = init_params
         if self.params is None:
-            self.params = [init_val * qmlnp.ones(shape) for shape in self.param_shapes]
+            self.params = [
+                init_val * qmlnp.ones(shape) for shape in self.param_shapes
+            ]
 
         # Make sure the shapes are correct
         for ind, shape in enumerate(self.param_shapes):
             if self.params[ind].shape != shape:
-                raise TypeError(f"Index {ind} of keyword `init_params` should be of shape " + f"{shape}, not {self.params[ind]}")
+                raise TypeError(
+                    f"Index {ind} of keyword `init_params` should be of shape "
+                    + f"{shape}, not {self.params[ind]}"
+                )
 
         # Create QNode (a la the decorator way)
         if self.bitflip_prob != 0:
-            noisy_device = qml.transforms.insert(self.device, op=qml.BitFlip, op_args=self.bitflip_prob)
-            self.cost_qnode = qml.QNode(func=self._cost_circuit, device=noisy_device)
+            noisy_device = qml.transforms.insert(
+                self.device, op=qml.BitFlip, op_args=self.bitflip_prob
+            )
+            self.cost_qnode = qml.QNode(
+                func=self._cost_circuit, device=noisy_device
+            )
         else:
-            self.cost_qnode = qml.QNode(func=self._cost_circuit, device=self.device)
+            self.cost_qnode = qml.QNode(
+                func=self._cost_circuit, device=self.device
+            )
 
         # Run through the steps of the optimizing
         self.costs = qmlnp.empty(self.steps)
@@ -161,9 +176,13 @@ class VQA:
         start = dt.now()
         for ind in range(self.steps):
             # Save the value of the cost per step too
-            self.params, self.costs[ind] = self.optimizer.step_and_cost(self.cost_qnode, *self.params)
+            self.params, self.costs[ind] = self.optimizer.step_and_cost(
+                self.cost_qnode, *self.params
+            )
             if ind:
-                self.current_prec = abs(1 - self.costs[ind - 1] / self.costs[ind])
+                self.current_prec = abs(
+                    1 - self.costs[ind - 1] / self.costs[ind]
+                )
                 if print_it:
                     print(
                         f"{print_pref}"
@@ -190,7 +209,7 @@ class VQA:
 class QAOA(VQA):
     def __init__(
         self,
-        Jij,
+        coeff,
         depth,
         steps,
         shots=None,
@@ -201,7 +220,7 @@ class QAOA(VQA):
         bitflip_prob=0,
     ):
         super().__init__(
-            Jij=Jij,
+            coeff=coeff,
             depth=depth,
             steps=steps,
             shots=shots,
@@ -234,7 +253,7 @@ class MAQAOA(VQA):
 
     def __init__(
         self,
-        Jij,
+        coeff,
         depth,
         steps,
         shots=None,
@@ -245,7 +264,7 @@ class MAQAOA(VQA):
         bitflip_prob=0,
     ):
         super().__init__(
-            Jij=Jij,
+            coeff=coeff,
             depth=depth,
             steps=steps,
             shots=shots,
@@ -256,7 +275,10 @@ class MAQAOA(VQA):
             bitflip_prob=bitflip_prob,
         )
         # comb(N, 2) == N choose 2 edges between N vertices in maximally connected graph
-        self.param_shapes = ((self.depth, int(comb(self.N, 2))), (self.depth, self.N))
+        self.param_shapes = (
+            (self.depth, int(comb(self.N, 2))),
+            (self.depth, self.N),
+        )
 
     def layer(self, gammas, betas):
         # Each gate gets its own beta/gamma parameter
@@ -277,7 +299,7 @@ class XQAOA(VQA):
 
     def __init__(
         self,
-        Jij,
+        coeff,
         depth,
         steps,
         shots=None,
@@ -288,7 +310,7 @@ class XQAOA(VQA):
         bitflip_prob=0,
     ):
         super().__init__(
-            Jij=Jij,
+            coeff=coeff,
             depth=depth,
             steps=steps,
             shots=shots,
@@ -329,23 +351,35 @@ class FALQON:
     only needs to run a circuit of 1 layer deep.
     """
 
-    def __init__(self, Jij, depth, dt=0.08, init_beta=0, shots=None, device="default.qubit"):
-        self._Jij = Jij
-        self.max_Jij = qmlnp.max(Jij)
+    def __init__(
+        self,
+        coeff,
+        depth,
+        dt=0.08,
+        init_beta=0,
+        shots=None,
+        device="default.qubit",
+    ):
+        self._coeff = coeff
+        self.max_coeff = qmlnp.max(coeff)
         # Keep the quadratic coefficient normalized
-        self.Jij = self._Jij / self.max_Jij
+        self.coeff = self._coeff / self.max_coeff
         self.depth = depth
         self.shots = shots
         # Number of final state particles in problem
-        self.N = len(Jij)
+        self.N = len(coeff)
 
         self.device = qml.device(device, wires=self.N)
 
         # Stuff for weighting gates
-        self.bit_strs = numpy.array(["".join(bs) for bs in product(["0", "1"], repeat=self.N)])
-        self.vertices = numpy.arange(self.N)
-        self.edges = numpy.array(list(combinations(range(self.N), r=2)))
-        self.weights = numpy.array([self.Jij[edge[0], edge[1]] for edge in self.edges])
+        self.bit_strs = np.array(
+            ["".join(bs) for bs in product(["0", "1"], repeat=self.N)]
+        )
+        self.vertices = np.arange(self.N)
+        self.edges = np.array(list(combinations(range(self.N), r=2)))
+        self.weights = np.array(
+            [self.coeff[edge[0], edge[1]] for edge in self.edges]
+        )
 
         # FALQON-specific parameters
         self.dt = dt
@@ -367,11 +401,11 @@ class FALQON:
                 # [Xi, wjk*ZjZk] = -2iwjk(δijYiZk + δikZjYi)
                 # delta_ij
                 if i == j:
-                    comm_weights.append(2 * self.Jij[j, k])
+                    comm_weights.append(2 * self.coeff[j, k])
                     comm_gates.append(qml.PauliY(i) @ qml.PauliZ(k))
                 # delta_jk
                 elif i == k:
-                    comm_weights.append(2 * self.Jij[j, k])
+                    comm_weights.append(2 * self.coeff[j, k])
                     comm_gates.append(qml.PauliZ(j) @ qml.PauliY(i))
         self.commutator = qml.Hamiltonian(comm_weights, comm_gates)
 
@@ -437,7 +471,7 @@ class FALQON:
         # below some threshold. We don't have that here, so there will a number of
         # evaluations equal to the depth of the circuit
         self.evals = self.depth
-        self.costs = numpy.empty(self.depth)
+        self.costs = qmlnp.empty(self.depth)
 
         for ind in range(self.depth):
             if print_it:
