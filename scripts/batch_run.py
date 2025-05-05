@@ -32,27 +32,30 @@ def main(
     evts_per_invm = split_data(get_data(etype=etype, dtype=dtype)[0])[0].shape[
         1
     ]
-    ind_lims = np.arange(0, evts_per_invm, runs_per_invm_per_core)
+    ind_lims = np.arange(0, evts_per_invm + 1, runs_per_invm_per_core)
 
     print("\nCOMMANDS TO BE RAN:")
     for ind_lo, ind_hi in zip(ind_lims[:-1], ind_lims[1:]):
-        cmd = [
-            "python efficiency.py",
-            f"--algorithm={alg}",
-            f"--etype={etype}",
-            f"--dtype={dtype}",
-            f"--depth={depth}",
-            f"--hamiltonian={hamiltonian}",
-            f"--indlims={ind_lo} {ind_hi}",
-            f"--steps={steps}",
-            f"--lambdanume={' '.join(lambda_nume)}",
-            f"--lambdadenom={' '.join(lambda_denom)}",
-            f"--norm={norm}",
-        ]
+        cmd = " ".join(
+            [
+                "python",
+                "efficiency.py",
+                f"--algorithm {alg}",
+                f"--etype {etype}",
+                f"--dtype {dtype}",
+                f"--depth {depth}",
+                f"--hamiltonian {hamiltonian}",
+                f"--indlims {ind_lo} {ind_hi}",
+                f"--steps {steps}",
+                f"--lambdanume {' '.join(lambda_nume)}",
+                f"--lambdadenom {' '.join(lambda_denom)}",
+                f"--norm {norm}",
+            ]
+        ).split()
 
         print(" ".join(cmd))
 
-    print(f"\nUsing {len(ind_lims)} cores.")
+    print(f"\nUsing {len(ind_lims) - 1} cores.")
     cont = input("Continue? [y/N]")
 
     if cont.lower() == "y":
@@ -64,7 +67,7 @@ def main(
             open(LOG_DIR / log_file, "w") as log,
             open(LOG_DIR / err_file, "w") as err,
         ):
-            Popen(["echo", "$HOME"], stdout=log, stderr=err)
+            Popen(cmd, stdout=log, stderr=err)
     else:
         print("Aborting...")
 
