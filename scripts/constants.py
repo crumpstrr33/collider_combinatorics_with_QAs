@@ -40,19 +40,22 @@ DEFAULT_STEPSIZE = 0.01
 # FALQON-specific defaults
 DEFAULT_BETA0 = 0
 DEFAULT_DT = 0.08
+# Device to use
+DEFAULT_DEVICE = "default.qubit"
 
-ALG_CHOICES = ["qaoa", "maqaoa", "xqaoa", "falqon", "nw_maqaoa", "hybrid"]
-QUADCOEFF_CHOICES = ["H0", "H1", "QA"]
-LAMBDA_CHOICES = ["QA", "avg", "Pijavg", "Pijmax"]
-# All possible choices for Hamiltonian. H0 and H1 are defined in the paper
-# QA specifies the choice for the lambda coefficient
-QCL_CHOICES = [qc for qc in QUADCOEFF_CHOICES if qc != "QA"] + [
-    f"QA_{lmbda}" for lmbda in LAMBDA_CHOICES
-]
-DATA_CHOICES = ["parton", "smeared", "delphes"]
+ALG_CHOICES = ["qaoa", "maqaoa", "xqaoa", "falqon"]
+QUADCOEFF_CHOICES = ["H0", "H1", "H2"]
+LAMBDA_OPERS = ["min", "max", "mean"]
+LAMBDA_VALS = ["Jij", "Pij"]
+NORM_CHOICES = ["none", "max", "mean", "sum"]
+DATA_CHOICES = ["parton", "smeared"]
 EVENT_CHOICES = ["ttbar", "tW", "6jet"]
 OPTIMIZERS = ["grad_descent", "adagrad", "adam"]
 
 SYM_TRUE_BS_DICT = {"ttbar": "000111", "tW": "00111", "6jet": None}
-MASS_NORM_DICT = {"ttbar": 2 * TOP_MASS, "tW": TOP_MASS + W_MASS, "4top": 4 * TOP_MASS}
+MASS_NORM_DICT = {
+    "ttbar": 2 * TOP_MASS,
+    "tW": TOP_MASS + W_MASS,
+    "4top": 4 * TOP_MASS,
+}
 NUM_FSP_DICT = {"ttbar": 6, "tW": 5, "6jet": 6}
