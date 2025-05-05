@@ -10,10 +10,10 @@ to assuming that the answer must have three 1's and three 0's, i.e. three partic
 assigned to each decaying top quark.
 """
 
-import re
+import os
 from argparse import ArgumentParser, BooleanOptionalAction
-from collections import Counter
 from datetime import datetime as dt
+from pathlib import Path
 from typing import Sequence
 
 import numpy as np
@@ -21,27 +21,30 @@ from constants import (
     ALG_CHOICES,
     DATA_CHOICES,
     DEFAULT_BETA0,
+    DEFAULT_DEVICE,
     DEFAULT_DT,
     DEFAULT_OPTIMIZER,
     DEFAULT_STEPS,
     DEFAULT_STEPSIZE,
     EVENT_CHOICES,
-    EVT_DIR,
-    IND_DIR,
-    NOISY_DIR,
+    INVMS,
+    LAMBDA_OPERS,
+    LAMBDA_VALS,
+    NORM_CHOICES,
+    NUM_FSP_DICT,
     OPTIMIZERS,
     OUTPUT_DIR,
     QUADCOEFF_CHOICES,
     SYM_TRUE_BS_DICT,
 )
+from hamiltonians import get_coefficients, get_minimum_energies
 from my_favorite_things import save
-from pennylane_algs import FALQON, HYBRID_MAQAOA, MAQAOA, NO_WEIGHT_MAQAOA, QAOA, XQAOA
-from qc_utilities import (
-    format_p4s,
-    get_coeffs,
-    get_lambdas,
-    get_minimum_energies,
-)
+from numpy.typing import NDArray
+from pennylane_algs import FALQON, MAQAOA, QAOA, XQAOA
+from qc_utilities import get_data, swap
+from scipy.special import comb
+
+from data import split_data
 
 
 class Efficiency:
@@ -49,100 +52,104 @@ class Efficiency:
         self,
         etype: str,
         dtype: str,
-        invm_lo: float,
-        invm_hi: float,
-        chosen_inds: Sequence[int],
+        ind_lo: int,
+        ind_hi: int,
         alg: str,
-        quadcoeff: str,
+        depth: int,
+        hamiltonian: str,
+        norm_scheme: str,
+        device: str,
+        root_dir: Path,
         alg_kwargs: dict[str, ...],
-        alg_opt_kwargs: dict[str, ...],
+        lambda_kwargs: dict[str, Sequence[str]],
     ):
         self.etype = etype
         self.dtype = dtype
-        self.invm_lo = invm_lo
-        self.invm_hi = invm_hi
-        self.chosen_inds = chosen_inds
+        self.ind_lo = ind_lo
+        self.ind_hi = ind_hi
         self.alg_str = alg.lower()
-        self.quadcoeff_str = quadcoeff
+        self.depth = depth
+        self.hamiltonian = hamiltonian
+        self.norm_scheme = norm_scheme
+        self.device = device
+        self.root_dir = root_dir
+        self.steps = alg_kwargs["steps"]
         self.alg_kwargs = alg_kwargs
-        self.alg_opt_kwargs = alg_opt_kwargs
+        self.lambda_kwargs = lambda_kwargs
 
-        # Get data for running alg
-        self.get_input_data()
+        # Info on the shape of the params for each alg, used for creating
+        # the numpy arrays that saves them.
+        self.num_fsp = NUM_FSP_DICT[self.etype]
+        match self.alg_str.lower():
+            case "qaoa":
+                self.param_shapes = ((self.depth,), (self.depth,))
+            case "maqaoa":
+                self.param_shapes = (
+                    (self.depth, int(comb(self.num_fsp, 2))),
+                    (self.depth, self.num_fsp),
+                )
+            case "xqaoa":
+                self.param_shapes = (
+                    (self.depth, int(comb(self.num_fsp, 2))),
+                    (self.depth, self.num_fsp),
+                    (self.depth, self.num_fsp),
+                )
+            case "falqon":
+                self.param_shapes = (self.depth,)
 
         # Total number of events
-        self.N = len(chosen_inds)
+        self.N = self.ind_hi - self.ind_lo
         # Bit string that solves combinatorial problem
-        self.soln_bs = SYM_TRUE_BS_DICT[self.etype]
+        self.soln_bitstring = SYM_TRUE_BS_DICT[self.etype]
 
-    @staticmethod
-    def find_placement(bit_str: str, probs: dict[str, float]) -> int:
+    def find_rank_and_prob(self, make_symmetric: bool) -> tuple[int, float]:
         """
-        Finds the placement of a bit string based on it's probability, i.e. it returns 1
-        if the bit string is the most likely.
+        For the current algorithm (assigned to self.alg), find the rank of `self.soln_bitstring`.
 
         Parameters:
-        bit_str - Bit string whose placement to find
-        probs - Dictionary of probabilities for all the probabilities
+        make_symmetric - If True, will combine the probabilities of symmetric
+            bit strings, e.g. "010" and "101".
+        """
+        probs = self.alg.get_probs(as_dict=True)
+        if make_symmetric:
+            probs = {
+                k: v + probs[swap(k)]
+                for k, v in probs.items()
+                if k.startswith(self.soln_bitstring[0])
+            }
 
-        returns (
-            placement of bit string in terms of probability
+        sorted_probs = sorted(probs.items(), key=lambda x: x[1], reverse=True)
+
+        return [
+            (ind, float(bs_prob[1]))
+            for ind, bs_prob in enumerate(sorted_probs)
+            if bs_prob[0] == self.soln_bitstring
+        ][0]
+
+    def get_input_data(self) -> None:
+        """
+        Get all the relevant input data.
+        """
+        self.p4s, self.Jijs, self.Pijs, self.invms = get_data(
+            etype=self.etype, dtype=self.dtype
         )
-        """
-        if bit_str is None:
-            return None
-        return [bsc[0] for bsc in Counter(probs).most_common()].index(bit_str) + 1
-
-    @staticmethod
-    def swap(bit_str: str) -> str:
-        """
-        Swaps the 0's and 1's in a bit string, i.e. if `bit_str=111000` then it returns
-        `000111`.
-
-        Parameters:
-        bit_str - Bit string to swap
-        """
-        return bit_str.replace("0", "2").replace("1", "0").replace("2", "1")
-
-    def sym_swap(self, bit_str: str) -> str:
-        """
-        Same as self.swap but does nothing if the bit string starts with a 0.
-
-        Parameters:
-        bit_str - Bit string to swap
-        """
-        if bit_str is None:
-            return None
-        return bit_str if bit_str.startswith("0") else self.swap(bit_str)
-
-    def get_input_data(self):
-        """
-        Get invariants masses and Jijs for either dtype='smeared' or 'parton' or 'test'.
-
-        Choose coefficient of the quadratic term (by default is just Jij)
-        """
-        # Get all 4-momenta
-        fpath = EVT_DIR / f"{self.etype}_{self.dtype}.npy"
-        self.p4s = np.load(fpath)
-
-        # Pick the correct events
-        self.p4s = self.p4s[self.chosen_inds]
-        # Reshape data properly
-        self.num_fsp, self.p4s, self.invms = format_p4s(self.p4s, return_extra=True)
-        # Can be just Jij or Jij + 2λPij, etc
-        if self.quadcoeff_str == "QA":
-            self.lambdas = get_lambdas(p4s=self.p4s, ltype="QA")
-        else:
-            self.lambdas = np.ones(len(self.p4s))
-        self.quadcoeffs = get_coeffs(
-            p4s=self.p4s, htype=self.quadcoeff_str, lambdas=self.lambdas
+        self.coeffs = get_coefficients(
+            hamiltonian=self.hamiltonian, evts=self.p4s, **self.lambda_kwargs
         )
 
-    def get_output_data(
-        self, quadcoeff: Sequence[Sequence[float]]
-    ) -> (dict[str, float], Sequence[float], Sequence[Sequence[float]], float, int):
+        # Create arrays of shape: [num_invm_bins, num_evts, ...], splits it all
+        # up to be per event per invariant mass bin
+        split_evts, split_inds = split_data(evts=self.p4s)
+        self.p4s = split_evts[:, self.ind_lo : self.ind_hi, ...]
+        self.Jijs = self.Jijs[split_inds][:, self.ind_lo : self.ind_hi, ...]
+        self.Pijs = self.Pijs[split_inds][:, self.ind_lo : self.ind_hi, ...]
+        self.coeffs = self.coeffs[split_inds][:, self.ind_lo : self.ind_hi, ...]
+        self.invms = self.invms[split_inds][:, self.ind_lo : self.ind_hi, ...]
+        self.norm_coeffs = self.normalize_coeffs()
+
+    def run_event(self, coeff: NDArray[NDArray[np.float64]]) -> None:
         """
-        Runs the algorithm.
+        Creates and Runs the algorithm.
         """
         match self.alg_str:
             case "qaoa":
@@ -153,12 +160,10 @@ class Efficiency:
                 Alg = XQAOA
             case "falqon":
                 Alg = FALQON
-            case "nw_maqaoa":
-                Alg = NO_WEIGHT_MAQAOA
-            case "hybrid":
-                Alg = HYBRID_MAQAOA
 
-        self.alg = Alg(Jij=quadcoeff, **self.alg_kwargs, **self.alg_opt_kwargs)
+        self.alg = Alg(
+            coeff=coeff, depth=self.depth, device=self.device, **self.alg_kwargs
+        )
 
         match self.alg_str:
             case "falqon":
@@ -166,143 +171,176 @@ class Efficiency:
             case _:
                 self.alg.optimize(print_it=False)
 
-        params = self.alg.params
-        costs = self.alg.costs
-        expval = self.alg.costs[-1]
-        probs = self.alg.get_probs(as_dict=True)
-        evals = self.alg.evals
-
-        return probs, costs, params, expval, evals
-
-    def run(self):
+    def normalize_coeffs(self) -> NDArray[np.float64]:
         """
-        Runs algorithm for each event and saves info in an array of dictionaries.
-        """
-        # Bit strings that minimize the Hamiltonian found by brute force
-        _, _, bf_bss, _ = get_minimum_energies(
-            p4s=self.p4s, htype=self.quadcoeff_str, lambdas=self.lambdas
-        )
+        Normalizes the coefficient matrix based on the normalization scheme.
 
-        self.datas = []
-        for ind, (quadcoeff, p4, invm) in enumerate(
-            zip(self.quadcoeffs, self.p4s, self.invms)
+        Parameters:
+        coeff - The coefficient matrix.
+        """
+        # Do operation over the last two dimensions
+        axes = (-2, -1)
+        match self.norm_scheme:
+            case "none":
+                return self.coeffs
+            case "max":
+                oper = np.max
+            case "mean":
+                oper = np.mean
+            case "sum":
+                oper = np.sum
+
+        return self.coeffs / oper(self.coeffs, axis=axes)[..., None, None]
+
+    def get_output_data(self) -> None:
+        """
+        Main function. Runs the algorithm on each event and saves the output on
+        a per invariant mass basis.
+        """
+        # Loop over invariant mass bins
+        for invm_ind, (coeffs, minimums) in enumerate(
+            zip(self.norm_coeffs, self.minima)
         ):
-            # Event number
-            evt = chosen_inds[ind]
+            invm = INVMS[invm_ind]
+            N_evts, num_fsp, _ = coeffs.shape
+            print(f"        ---- INVARIANT MASS = {invm:.2f} ----")
 
-            print(
-                f"Index: {ind + 1:>{len(str(self.N))}} / {self.N} (p = {depth}) | "
-                + f"norm inv mass = {invm:.2f}"
-                + f" | Event: {evt:>{len(str(max(chosen_inds)))}}",
-                end=" ",
-                flush=True,
-            )
+            # Create numpy arrays to save data in
+            probs_arr = np.empty((N_evts, 2**num_fsp))
+            sym_probs_arr = np.empty((N_evts, 2 ** (num_fsp - 1)))
+            costs_arr = np.empty((N_evts, self.steps))
+            params_arr = [
+                np.empty((N_evts, *param_shape))
+                for param_shape in self.param_shapes
+            ]
+            expval_arr = np.empty(N_evts)
+            evals_arr = np.empty(N_evts)
+            rank_arr = np.empty(N_evts)
+            prob_arr = np.empty(N_evts)
+            sym_rank_arr = np.empty(N_evts)
+            sym_prob_arr = np.empty(N_evts)
+            min_bitstring_arr = np.empty(N_evts)
+            min_energy_arr = np.empty(N_evts)
 
-            # Run the algorithm
-            t0 = dt.now()
-            norm_quadcoeff = quadcoeff / quadcoeff.max()
-            probs, costs, params, expval, evals = self.get_output_data(
-                quadcoeff=norm_quadcoeff
-            )
-            t1 = dt.now()
+            # Loop over individual events
+            for ind, (coeff, minimum) in enumerate(zip(coeffs, minimums)):
+                print(
+                    f"Index: {ind + 1:>{len(str(self.N))}} / {self.N} "
+                    + f"(p = {self.depth}) | norm inv mass = {invm:.2f} "
+                    + f" | Event: {self.ind_lo + ind}",
+                    end=" ",
+                    flush=True,
+                )
+                # Run the algorithm
+                t0 = dt.now()
+                self.run_event(coeff=coeff)
+                tot_time = (dt.now() - t0).total_seconds()
 
-            print(
-                f"| {self.alg_str.upper()} time: {(t1 - t0).total_seconds():.2f} "
-                + f"seconds | Steps: {evals}",
-                flush=True,
-            )
-
-            # Probabilities summing bit string and it's symmetric bit string
-            # Only keeping bit strings that start with 0
-            sym_probs = {
-                bs: p + probs[self.swap(bs)]
-                for bs, p in probs.items()
-                if bs.startswith("0")
-            }
-
-            # Given the energy for each bit string (in terms of the given Hamiltonian),
-            # this is the placement (1st, 2nd, 3rd, etc.) of the bit string that
-            # solves the combinatorial problem
-            soln_placement = self.find_placement(bit_str=self.soln_bs, probs=probs)
-            # And this is its placement in for the symmetric probabilities
-            sym_soln_placement = self.find_placement(
-                bit_str=self.sym_swap(self.soln_bs), probs=sym_probs
-            )
-
-            data = {
-                # Normalized invariant mass
-                "invm": invm,
-                # Coefficient of quadratic term of Hamiltonian in terms of spin
-                "quadcoeff": quadcoeff,
-                # Coefficient of quadratic term of Hamiltonian normalized
-                "norm_quadcoeff": norm_quadcoeff,
-                # 4 momentum of event
-                "p4": p4,
-                # Index of event
-                "evt": evt,
-                # Dict of probabilities for bit strings
-                "probs": probs,
-                # Dict of probabilities with assuming symmetry beteween 0 <-> 1
-                "sym_probs": sym_probs,
-                # Cost function per step
-                "costs": costs,
-                # Optimized parameters
-                "params": params,
-                # Expectation value for final algorithm circuit
-                "expval": expval,
-                # Number of evaluations
-                "evals": evals,
-                # Bruteforce minimum bit string
-                "bruteforce_bs": bf_bss[ind],
-                # Symmetric bruteforce minimum bit string
-                "sym_bruteforce_bs": self.sym_swap(bf_bss[ind]),
-                # Bit string that solves combinatorial problem
-                "solution_bs": self.soln_bs,
-                # Symmetric bit string that solves combinatorial problem
-                "sym_solution_bs": self.sym_swap(self.soln_bs),
-                # Placement of correct bit string in terms of energy
-                "solution_placement": soln_placement,
-                # Symmetric placement of correct bit string in terms of energy
-                "sym_solution_placement": sym_soln_placement,
-            }
-            if self.alg_str == "falqon":
-                # Save "depth_probs", the probability dictionary per depth and the same
-                # for it's symmetric cousin
-                depth_probs, depth_probs2 = [], []
-                depth_bss, depth_bss2 = [], []
-                sym_depth_probs, sym_depth_probs2 = [], []
-                sym_depth_bss, sym_depth_bss2 = [], []
-                for depth_prob in self.alg.depth_probs:
-                    highest_probs = Counter(depth_prob).most_common(2)
-
-                    sym_depth_prob = {
-                        bs: p + depth_prob[self.swap(bs)]
-                        for bs, p in depth_prob.items()
-                        if bs.startswith("0")
-                    }
-                    sym_highest_probs = Counter(sym_depth_prob).most_common(2)
-
-                    depth_bss.append(str(highest_probs[0][0]))
-                    depth_probs.append(float(highest_probs[0][1]))
-                    depth_bss2.append(str(highest_probs[1][0]))
-                    depth_probs2.append(float(highest_probs[1][1]))
-                    sym_depth_bss.append(str(sym_highest_probs[0][0]))
-                    sym_depth_probs.append(float(sym_highest_probs[0][1]))
-                    sym_depth_bss2.append(str(sym_highest_probs[1][0]))
-                    sym_depth_probs2.append(float(sym_highest_probs[1][1]))
-
-                data |= {
-                    "depth_bss": depth_bss,
-                    "depth_probs": depth_probs,
-                    "depth_bss2": depth_bss2,
-                    "depth_probs2": depth_probs2,
-                    "sym_depth_bss": sym_depth_bss,
-                    "sym_depth_probs": sym_depth_probs,
-                    "sym_depth_bss2": sym_depth_bss2,
-                    "sym_depth_probs2": sym_depth_probs2,
+                # Gather the data
+                probs = self.alg.get_probs(as_dict=True)
+                sym_probs = {
+                    k: v + probs[swap(k)]
+                    for k, v in probs.items()
+                    if k.startswith(self.soln_bitstring[0])
                 }
-            self.datas.append(data)
-        self.datas = np.array(self.datas)
+                costs = self.alg.costs.numpy()
+                params = [param.numpy() for param in self.alg.params]
+                expval = costs[-1]
+                evals = self.alg.evals
+                rank, prob = self.find_rank_and_prob(make_symmetric=False)
+                sym_rank, sym_prob = self.find_rank_and_prob(
+                    make_symmetric=True
+                )
+
+                print(
+                    f"| {self.alg_str.upper()} time: {tot_time:.2f} "
+                    + f"seconds | Steps: {evals}",
+                    flush=True,
+                )
+
+                # Store data in arrays
+                probs_arr[ind] = np.array(list(probs.values()))
+                sym_probs_arr[ind] = np.array(list(sym_probs.values()))
+                costs_arr[ind] = np.pad(costs, (0, self.steps - len(costs)))
+                for param_arr, one_params in zip(params_arr, params):
+                    param_arr[ind] = one_params
+                expval_arr[ind] = expval
+                evals_arr[ind] = evals
+                rank_arr[ind] = rank
+                prob_arr[ind] = prob
+                sym_rank_arr[ind] = sym_rank
+                sym_prob_arr[ind] = sym_prob
+                min_bitstring_arr[ind] = minimum[0]
+                min_energy_arr[ind] = minimum[1]
+
+            # Create save directory
+            invm_dir = self.root_dir / f"{invm:.2f}"
+            print(f"Created directory: {invm_dir}")
+            os.makedirs(invm_dir)
+
+            # Save params based on actual names which is algorithm-specific
+            match self.alg_str.lower():
+                case "qaoa" | "maqaoa":
+                    params_dict = {
+                        "gammas": params_arr[0],
+                        "betas": params_arr[1],
+                    }
+                case "xqaoa":
+                    params_dict = {
+                        "gammas": params_arr[0],
+                        "betas": params_arr[1],
+                        "alphas": params_arr[2],
+                    }
+                case "falqon":
+                    params_dict = {"betas": params_arr[0]}
+
+            # Save all the info
+            save(
+                name=f"test_{self.ind_lo}-{self.ind_hi}",
+                savedir=invm_dir,
+                stype="npz",
+                absolute=True,
+                invm_p4s=self.p4s[invm_ind],
+                invms=self.invms[invm_ind],
+                coeffs=self.coeffs[invm_ind],
+                norm_coeffs=self.norm_coeffs[invm_ind],
+                probs=probs_arr,
+                sym_probs=sym_probs_arr,
+                costs=costs_arr,
+                expvals=expval_arr,
+                evals=evals_arr,
+                ranks=rank_arr,
+                rank_probs=prob_arr,
+                sym_ranks=sym_rank_arr,
+                sym_rank_probs=sym_prob_arr,
+                min_bitstrings=min_bitstring_arr,
+                min_energies=min_energy_arr,
+                **params_dict,
+            )
+            print()
+
+    def brute_force(self) -> None:
+        """
+        Finds the minimum bitstring and corresponding energy by brute force for
+        each event.
+        """
+        # Array split by invm with minimum bitstrings and energies
+        self.minima = np.empty((*self.p4s.shape[:2], 2), dtype=object)
+        for ind, invm_p4s in enumerate(self.p4s):
+            minimums = get_minimum_energies(
+                evts=invm_p4s,
+                hamiltonian=self.hamiltonian,
+                **self.lambda_kwargs,
+            )
+            self.minima[ind] = minimums
+
+    def run(self) -> None:
+        """
+        Function to call. Runs each section.
+        """
+        self.get_input_data()
+        self.brute_force()
+        self.get_output_data()
 
 
 if __name__ == "__main__":
@@ -312,23 +350,36 @@ if __name__ == "__main__":
         "--algorithm", "-a", required=True, type=str.lower, choices=ALG_CHOICES
     )
     # Type of event to run on, e.g. ttbar or tW
-    parser.add_argument("--event", "-e", required=True, type=str, choices=EVENT_CHOICES)
+    parser.add_argument(
+        "--etype", "-e", required=True, type=str, choices=EVENT_CHOICES
+    )
     # Data to run on, e.g. parton or smeared
     parser.add_argument(
         "--dtype", "-D", required=True, type=str.lower, choices=DATA_CHOICES
     )
     # Coefficient of the quadratic term, e.g. og for Jij or qa for Jij + 2λPij
     parser.add_argument(
-        "--quadcoeff", "-c", required=True, type=str, choices=QUADCOEFF_CHOICES
+        "--hamiltonian",
+        "-H",
+        required=True,
+        type=str,
+        choices=QUADCOEFF_CHOICES,
+    )
+    # How to normalize the coefficient matrix
+    parser.add_argument(
+        "--norm", required=True, type=str.lower, choices=NORM_CHOICES
+    )
+    # Specify lambda, e.g. --lambda-nume min Jij
+    parser.add_argument("--lambdanume", required=False, type=str, nargs=2)
+    parser.add_argument("--lambdadenom", required=False, type=str, nargs=2)
+    # The device to use for pennylane
+    parser.add_argument(
+        "--device", required=True, type=str, default=DEFAULT_DEVICE
     )
     # Number of shots, defaults to None == infinite
     parser.add_argument("--shots", "-s", required=False)
     # The lower and upper limit of events to run, must match an index file
     parser.add_argument("--indlims", "-i", required=True, type=int, nargs=2)
-    # The lower and upper limit of the allowed invariant mass
-    parser.add_argument("--invmlims", "-m", required=True, type=float, nargs=2)
-    # Only required if glob finds more than one index file
-    parser.add_argument("--uid", "-u", type=int)
     # Depth of circuit
     parser.add_argument("--depth", "-d", required=True, type=int)
     # If set, will not run simulation or save data at the end
@@ -360,143 +411,67 @@ if __name__ == "__main__":
             "The first value for `indlims` must be the smaller of the two."
             + f" It is {args.indlims}"
         )
-    if not (args.invmlims[0] < args.invmlims[1]):
-        raise Exception(
-            "The first value for `invmlims` must be the smaller of the two."
-            + f" It is {args.invmlims}"
-        )
-
-    # Gather parameters
-    etype = args.event
-    dtype = args.dtype
-    shots = args.shots
-    invmlims = args.invmlims
-    depth = args.depth
-    indlims = args.indlims
-    uid = args.uid
-    alg = args.algorithm
-    quadcoeff_type = args.quadcoeff
-
-    # Get directory holding the relevant index file(s)
-    uid_str = uid or "*"
-    ind_dir = list(
-        IND_DIR.glob(
-            f"inds*_{etype}_{dtype}_{uid_str}x*_{invmlims[0]:.2f}to{invmlims[1]:.2f}"
-        )
-    )
-    # Find number of digits (e.g. padding) in index limits
-    num_digs = len(
-        re.findall(r"_(\d+)to\d+\.npz$", list(ind_dir[0].glob("*"))[0].name)[0]
-    )
-    # Find file matching the arguments
-    ind_file = list(
-        ind_dir[0].glob(f"*{indlims[0]:0>{num_digs}}to*{indlims[1]:0>{num_digs}}*")
-    )
-
-    # Make sure we didn't get more than one (if so, might need to specify UID)
-    if len(ind_dir) != 1:
-        raise Exception(f"Found {len(ind_dir)} matching directories:\n{ind_dir}")
-    if len(ind_file) != 1:
-        raise Exception(f"Found {len(ind_file)} matching files:\n{ind_file}")
-
-    # Get the indices to pass to function
-    chosen_inds = np.load(f"{ind_file[0]}")["inds"]
-    # Grab UID from file name
-    uid = re.findall(r"_(\d{3})x\d{3}_", str(ind_file[0]))[0]
-    # Formatted string for index range
-    inds = f"{indlims[0]:0>{num_digs}}to{indlims[1]:0>{num_digs}}"
-    # Formatted string for invariant mass range
-    invm_range_str = f"{invmlims[0]:.2f}to{invmlims[1]:.2f}"
-    # Create save directory and file names
-    save_name = f"eff_{etype}_{dtype}_{alg}_{quadcoeff_type}_{uid}_{inds}_p{depth}"
-    save_dir = f"eff_{etype}_{dtype}_{alg}_{quadcoeff_type}_p{depth}"
-    if shots is not None:
-        save_dir += f"_shots{shots}"
-
-    # Only add initial beta and/or dt if they aren't the defaults
-    if args.algorithm == "falqon":
-        save_name += f"_b{args.initbeta}"
-        save_name += f"_dt{args.dt}"
-        save_dir += f"_b{args.initbeta}"
-        save_dir += f"_dt{args.dt}"
-    # Add on invariant mass limits to save file name
-    save_name += f"_{invm_range_str}"
-
-    # Make sure we aren't running something we already ran
-    if (OUTPUT_DIR / save_dir / save_name).exists():
-        raise Exception(f"{OUTPUT_DIR / save_dir / save_name} already exists...")
-
-    # Don't run anything if this is a dryrun
-    if args.dryrun:
-        datas = {}
-    else:
-        # Prepare arguments depending on algorithm
-        match alg.lower():
-            case "falqon":
-                alg_opt_kwargs = {"dt": args.dt, "init_beta": args.initbeta}
-                alg_kwargs = {"depth": depth, "shots": shots}
-            case _:
-                alg_opt_kwargs = {
-                    "optimizer": args.optimizer,
-                    "opt_kwargs": {"stepsize": args.stepsize},
-                }
-                alg_kwargs = {"depth": depth, "steps": args.steps, "shots": shots}
-
-        # i was too lazy to do this proper for noisy runs, so i did this :)
-        if False:
-            bitflip_prob = 0.001
-            prob_str = "0.1"
-            save_dir = (
-                NOISY_DIR
-                / f"eff_{prob_str}_{etype}_{dtype}_{alg}_{quadcoeff_type}_p{depth}"
+    # If we need arguments for lambda, make sure they are of a correct form
+    if args.hamiltonian == "H2":
+        if (
+            args.lambdanume[0] not in LAMBDA_OPERS
+            or args.lambdanume[1] not in LAMBDA_VALS
+            or args.lambdadenom[0] not in LAMBDA_OPERS
+            or args.lambdadenom[1] not in LAMBDA_VALS
+        ):
+            raise Exception(
+                "Lambda arguments are incorrect. Operators must be from: "
+                f"{LAMBDA_OPERS} and values from {LAMBDA_VALS}."
             )
-            alg_kwargs |= {"bitflip_prob": bitflip_prob, "device": "default.mixed"}
-        else:
-            bitflip_prob = 0
 
-        # Run events
-        efficiency = Efficiency(
-            etype=etype,
-            dtype=dtype,
-            invm_lo=invmlims[0],
-            invm_hi=invmlims[1],
-            chosen_inds=chosen_inds,
-            alg=alg,
-            quadcoeff=quadcoeff_type,
-            alg_kwargs=alg_kwargs,
-            alg_opt_kwargs=alg_opt_kwargs,
+    # Temporary stops
+    if args.shots is not None:
+        raise Exception("Finite shot functionality has been removed! (for now)")
+    if args.algorithm.lower() == "falqon":
+        raise Exception("FALQON doesn't work! (yet)")
+
+    # Make a more specific string if we need to specify the lambda coefficient
+    ham_str = args.hamiltonian
+    if args.hamiltonian == "H2":
+        lambda_nume = args.lambdanume
+        lambda_denom = args.lambdadenom
+        ham_str = (
+            f"{args.hamiltonian}-{''.join(lambda_nume)}-{''.join(lambda_denom)}"
         )
-        efficiency.run()
-
-    # Collect event-nonspecific data
-    metadata = {
-        "lims": invmlims,
-        "N_range": indlims,
-        "uid": uid,
-        "alg_type": alg,
-        "shots": shots,
-        "depth": depth,
-        "etype": etype,
-        "dtype": dtype,
-        "quadcoeff": quadcoeff_type,
-        "bitflip_prob": bitflip_prob,
-    }
-    if alg == "falqon":
-        metadata |= {"dt": args.dt, "init_beta": args.initbeta}
-    else:
-        metadata |= {
-            "steps": args.steps,
-            "stepsize": args.stepsize,
-            "optimizer": args.optimizer,
-        }
-
-    # Save everything
-    save(
-        name=save_name,
-        savedir=OUTPUT_DIR / save_dir,
-        stype="pkl",
-        absolute=True,
-        dryrun=args.dryrun,
-        data=efficiency.datas,
-        metadata=metadata,
+    # Make run specific directory, if it already exists we DO want an error
+    root_dir = (
+        OUTPUT_DIR
+        / args.algorithm
+        / f"{args.etype}_{args.dtype}_{args.depth}_{ham_str}"
     )
+    os.makedirs(root_dir, exist_ok=True)
+
+    # Stuff that differs between QAOA and FALQON
+    match args.algorithm.lower():
+        case "falqon":
+            alg_kwargs = {
+                "shots": args.shots,
+                "dt": args.dt,
+                "initbeta": args.initbeta,
+            }
+        case _:
+            alg_kwargs = {
+                "shots": args.shots,
+                "steps": args.steps,
+            }
+    # Run it!
+    efficiency = Efficiency(
+        etype=args.etype,
+        dtype=args.dtype,
+        ind_lo=args.indlims[0],
+        ind_hi=args.indlims[1],
+        alg=args.algorithm,
+        depth=args.depth,
+        hamiltonian=args.hamiltonian,
+        norm_scheme=args.norm,
+        device=args.device,
+        root_dir=root_dir,
+        alg_kwargs=alg_kwargs,
+        lambda_kwargs={"nume": args.lambdanume, "denom": args.lambdadenom},
+    )
+    efficiency.run()
