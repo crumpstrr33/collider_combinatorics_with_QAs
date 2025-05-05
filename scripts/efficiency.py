@@ -133,6 +133,7 @@ class Efficiency:
         self.p4s, self.Jijs, self.Pijs, self.invms = get_data(
             etype=self.etype, dtype=self.dtype
         )
+        print()
         self.coeffs = get_coefficients(
             hamiltonian=self.hamiltonian, evts=self.p4s, **self.lambda_kwargs
         )
@@ -373,9 +374,7 @@ if __name__ == "__main__":
     parser.add_argument("--lambdanume", required=False, type=str, nargs=2)
     parser.add_argument("--lambdadenom", required=False, type=str, nargs=2)
     # The device to use for pennylane
-    parser.add_argument(
-        "--device", required=True, type=str, default=DEFAULT_DEVICE
-    )
+    parser.add_argument("--device", type=str, default=DEFAULT_DEVICE)
     # Number of shots, defaults to None == infinite
     parser.add_argument("--shots", "-s", required=False)
     # The lower and upper limit of events to run, must match an index file
@@ -442,7 +441,7 @@ if __name__ == "__main__":
     root_dir = (
         OUTPUT_DIR
         / args.algorithm
-        / f"{args.etype}_{args.dtype}_{args.depth}_{ham_str}"
+        / f"{args.etype}_{args.dtype}_{args.depth}_{ham_str}_{args.norm}"
     )
     os.makedirs(root_dir, exist_ok=True)
 
