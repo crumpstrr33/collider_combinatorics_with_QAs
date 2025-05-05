@@ -14,7 +14,7 @@ from qc_utilities import get_data
 
 from data import split_data
 
-runs_per_invm_per_core = 100
+runs_per_invm_per_core = 1000
 
 
 def main(
@@ -35,6 +35,7 @@ def main(
     ind_lims = np.arange(0, evts_per_invm + 1, runs_per_invm_per_core)
 
     print("\nCOMMANDS TO BE RAN:")
+    cmds = []
     for ind_lo, ind_hi in zip(ind_lims[:-1], ind_lims[1:]):
         cmd = " ".join(
             [
@@ -54,20 +55,26 @@ def main(
         ).split()
 
         print(" ".join(cmd))
+        cmds.append(cmd)
 
     print(f"\nUsing {len(ind_lims) - 1} cores.")
     cont = input("Continue? [y/N]")
 
     if cont.lower() == "y":
         os.makedirs(LOG_DIR, exist_ok=True)
-        # Log file name
-        log_file = f"log_{dtype}_{etype}_{alg}_p{depth}_{ind_lo}to{ind_hi}.log"
-        err_file = f"err_{dtype}_{etype}_{alg}_p{depth}_{ind_lo}to{ind_hi}.log"
-        with (
-            open(LOG_DIR / log_file, "w") as log,
-            open(LOG_DIR / err_file, "w") as err,
-        ):
-            Popen(cmd, stdout=log, stderr=err)
+        for cmd in cmds:
+            # Log file name
+            log_file = (
+                f"log_{dtype}_{etype}_{alg}_p{depth}_{ind_lo}to{ind_hi}.log"
+            )
+            err_file = (
+                f"err_{dtype}_{etype}_{alg}_p{depth}_{ind_lo}to{ind_hi}.log"
+            )
+            with (
+                open(LOG_DIR / log_file, "w") as log,
+                open(LOG_DIR / err_file, "w") as err,
+            ):
+                Popen(cmd, stdout=log, stderr=err)
     else:
         print("Aborting...")
 
