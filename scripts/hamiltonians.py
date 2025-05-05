@@ -2,9 +2,8 @@ from typing import Optional, Sequence, Union
 
 import numpy as np
 from numpy.typing import NDArray
-
-from .new_qc_utilities import get_Jijs, get_Pijs
-from .types import evts_type
+from qc_utilities import get_Jijs, get_Pijs
+from type_hints import evts_type
 
 
 def get_lambdas(
@@ -71,9 +70,7 @@ def get_coefficients(
             return Jijs + lambdas[:, None, None] * Pijs / 2
 
 
-def get_bitstrings(
-    N: int, astype: str = "bits"
-) -> NDArray[Union[str, NDArray[int]]]:
+def get_bitstrings(N: int, astype: str = "bits") -> NDArray[Union[str, NDArray[int]]]:
     """
     Gives all possible bitstrings of length `N`.
 
@@ -114,9 +111,7 @@ def get_bitstring_energies(
         lambda coefficient. Must be specified if `hamiltonian="H2"` and then
         must be given `nume` and `denom`.
     """
-    coeffs = get_coefficients(
-        hamiltonian=hamiltonian, evts=evts, **lambda_kwargs
-    )
+    coeffs = get_coefficients(hamiltonian=hamiltonian, evts=evts, **lambda_kwargs)
     bs_arr = [+1 if b == "1" else -1 for b in bs]
 
     return np.einsum("nij, i, j -> n", coeffs, bs_arr, bs_arr)
@@ -128,7 +123,7 @@ def get_all_bitstring_energies(
     as_dict: bool = False,
     **lambda_kwargs: Sequence[str],
 ) -> Union[
-    (Sequence[str], NDArray[NDArray[np.float64]]),
+    tuple[Sequence[str], NDArray[NDArray[np.float64]]],
     NDArray[dict[str, np.float64]],
 ]:
     """
@@ -149,9 +144,7 @@ def get_all_bitstring_energies(
         lambda coefficient. Must be specified if `hamiltonian="H2"` and then
         must be given `nume` and `denom`.
     """
-    coeffs = get_coefficients(
-        hamiltonian=hamiltonian, evts=evts, **lambda_kwargs
-    )
+    coeffs = get_coefficients(hamiltonian=hamiltonian, evts=evts, **lambda_kwargs)
     num_fsp = coeffs.shape[1]
 
     bitstrings = get_bitstrings(N=num_fsp)
@@ -163,7 +156,7 @@ def get_all_bitstring_energies(
     return bitstrings, energies
 
 
-def get_minimum_energy(
+def get_minimum_energies(
     evts: evts_type, hamiltonian: str, **lambda_kwargs: Sequence[str]
 ) -> NDArray[object]:
     """
