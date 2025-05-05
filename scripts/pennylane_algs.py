@@ -126,6 +126,8 @@ class VQA:
         """
         probs_qnode = qml.QNode(self._probs_circuit, self.device)
         probs = probs_qnode(*self.params)
+        if not isinstance(probs, np.ndarray):
+            probs = probs.numpy()
 
         if as_dict:
             return dict(zip(self.bit_strs, probs))
