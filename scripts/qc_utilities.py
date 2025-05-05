@@ -3,10 +3,9 @@ from random import choice
 from typing import Optional, Union
 
 import numpy as np
+from constants import MASS_NORM_DICT, METRIC
 from numpy.typing import NDArray
-
-from .constants import MASS_NORM_DICT, METRIC
-from .types import Jijs_type, Pijs_type, evt_type, evts_type
+from type_hints import Jijs_type, Pijs_type, evt_type, evts_type
 
 
 def get_Pijs(evts: evts_type) -> Pijs_type:
@@ -135,9 +134,7 @@ def get_event(
         explicit path to where the data file is. Replacing `etype` and `dtype`.
 
     """
-    evts, Jijs, Pijs, invms = get_data(
-        etype=etype, dtype=dtype, data_path=data_path
-    )
+    evts, Jijs, Pijs, invms = get_data(etype=etype, dtype=dtype, data_path=data_path)
     invm_inds = np.where(np.logical_and(invms > low_invm, invms < hi_invm))[0]
 
     if ind is None:
