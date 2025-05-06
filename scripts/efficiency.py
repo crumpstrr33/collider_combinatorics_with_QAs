@@ -27,6 +27,7 @@ from constants import (
     DEFAULT_STEPS,
     DEFAULT_STEPSIZE,
     EVENT_CHOICES,
+    HAMILTONIAN_CHOICES,
     INVMS,
     LAMBDA_OPERS,
     LAMBDA_VALS,
@@ -34,7 +35,6 @@ from constants import (
     NUM_FSP_DICT,
     OPTIMIZERS,
     OUTPUT_DIR,
-    QUADCOEFF_CHOICES,
     SYM_TRUE_BS_DICT,
 )
 from hamiltonians import get_coefficients, get_minimum_energies
@@ -364,7 +364,7 @@ if __name__ == "__main__":
         "-H",
         required=True,
         type=str,
-        choices=QUADCOEFF_CHOICES,
+        choices=HAMILTONIAN_CHOICES,
     )
     # How to normalize the coefficient matrix
     parser.add_argument(

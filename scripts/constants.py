@@ -44,7 +44,7 @@ DEFAULT_DT = 0.08
 DEFAULT_DEVICE = "default.qubit"
 
 ALG_CHOICES = ["qaoa", "maqaoa", "xqaoa", "falqon"]
-QUADCOEFF_CHOICES = ["H0", "H1", "H2"]
+HAMILTONIAN_CHOICES = ["H0", "H1", "H2"]
 LAMBDA_OPERS = ["min", "max", "mean"]
 LAMBDA_VALS = ["Jij", "Pij"]
 NORM_CHOICES = ["none", "max", "mean", "sum"]
