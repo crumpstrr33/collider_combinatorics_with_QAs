@@ -35,6 +35,15 @@ def main(
     ind_lims = np.arange(0, evts_per_invm + 1, runs_per_invm_per_core)
     ind_pairs = np.dstack((ind_lims[:-1], ind_lims[1:]))[0]
 
+    # Create string of attributes for log file name
+    if hamiltonian == "H2":
+        lambda_nume = lambda_nume
+        lambda_denom = lambda_denom
+        ham_str = (
+            f"{hamiltonian}-{''.join(lambda_nume)}-{''.join(lambda_denom)}"
+        )
+    attrs = f"{dtype}_{etype}_{alg}_p{depth}_{ham_str}_{norm}"
+
     print("\nCOMMANDS TO BE RAN:")
     cmds = []
     for ind_lo, ind_hi in ind_pairs:
@@ -66,12 +75,8 @@ def main(
         for cmd, ind_pair in zip(cmds, ind_pairs):
             ind_lo, ind_hi = ind_pair
             # Log file name
-            log_file = (
-                f"log_{dtype}_{etype}_{alg}_p{depth}_{ind_lo}to{ind_hi}.log"
-            )
-            err_file = (
-                f"err_{dtype}_{etype}_{alg}_p{depth}_{ind_lo}to{ind_hi}.log"
-            )
+            log_file = f"log_{attrs}_{ind_lo}-{ind_hi}.log"
+            err_file = f"err_{attrs}_{ind_lo}-{ind_hi}.log"
             with (
                 open(LOG_DIR / log_file, "w") as log,
                 open(LOG_DIR / err_file, "w") as err,
