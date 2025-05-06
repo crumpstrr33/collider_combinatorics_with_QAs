@@ -277,7 +277,7 @@ class Efficiency:
             # Create save directory
             invm_dir = self.root_dir / f"{invm:.2f}"
             print(f"Created directory: {invm_dir}")
-            os.makedirs(invm_dir)
+            os.makedirs(invm_dir, exist_ok=True)
 
             # Save params based on actual names which is algorithm-specific
             match self.alg_str.lower():
@@ -297,7 +297,7 @@ class Efficiency:
 
             # Save all the info
             save(
-                name=f"test_{self.ind_lo}-{self.ind_hi}",
+                name=f"eff_{self.ind_lo}-{self.ind_hi}",
                 savedir=invm_dir,
                 stype="npz",
                 absolute=True,
