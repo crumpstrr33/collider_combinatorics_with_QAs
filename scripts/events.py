@@ -134,20 +134,12 @@ def get_event(
         explicit path to where the data file is. Replacing `etype` and `dtype`.
 
     """
-    evts, Jijs, Pijs, invms = get_data(etype=etype, dtype=dtype, data_path=data_path)
+    evts, Jijs, Pijs, invms = get_data(
+        etype=etype, dtype=dtype, data_path=data_path
+    )
     invm_inds = np.where(np.logical_and(invms > low_invm, invms < hi_invm))[0]
 
     if ind is None:
         ind = choice(invm_inds)
 
     return evts[ind], Jijs[ind], Pijs[ind], invms[ind]
-
-
-def swap(bs: str) -> str:
-    """
-    Swaps the 0's and 1's in a string
-
-    Parameters:
-    bs - Bitstring to invert.
-    """
-    return bs.replace("0", "9").replace("1", "0").replace("9", "1")
