@@ -9,8 +9,8 @@ import os
 from subprocess import Popen
 
 import numpy as np
-from constants import LOG_DIR
 
+from .constants import LOG_DIR
 from .data import split_data
 from .events import get_data
 
@@ -29,9 +29,7 @@ def main(
     norm: str,
 ) -> None:
     # e.g. 2000
-    evts_per_invm = split_data(get_data(etype=etype, dtype=dtype)[0])[0].shape[
-        1
-    ]
+    evts_per_invm = split_data(get_data(etype=etype, dtype=dtype)[0])[0].shape[1]
     ind_lims = np.arange(0, evts_per_invm + 1, runs_per_invm_per_core)
     ind_pairs = np.dstack((ind_lims[:-1], ind_lims[1:]))[0]
 
@@ -39,9 +37,7 @@ def main(
     if hamiltonian == "H2":
         lambda_nume = lambda_nume
         lambda_denom = lambda_denom
-        ham_str = (
-            f"{hamiltonian}-{''.join(lambda_nume)}-{''.join(lambda_denom)}"
-        )
+        ham_str = f"{hamiltonian}-{''.join(lambda_nume)}-{''.join(lambda_denom)}"
     attrs = f"{dtype}_{etype}_{alg}_p{depth}_{ham_str}_{norm}"
 
     print("\nCOMMANDS TO BE RAN:")
