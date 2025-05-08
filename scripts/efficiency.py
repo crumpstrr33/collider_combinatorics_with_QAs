@@ -42,7 +42,7 @@ from .constants import (
     SYM_TRUE_BS_DICT,
 )
 from .data import split_data
-from .events import get_data,
+from .events import get_data
 from .hamiltonians import get_coefficients, get_minimum_energies, swap
 from .pennylane_algs import FALQON, MAQAOA, QAOA, XQAOA
 
@@ -298,8 +298,9 @@ class Efficiency:
                     params_dict = {"betas": params_arr[0]}
 
             # Save all the info
+            pad = len(str(self.tot_evts))
             save(
-                name=f"eff_{self.ind_lo:0>{self.tot_evts}}-{self.ind_hi:0>{self.tot_evts}}",
+                name=f"eff_{self.ind_lo:0>{pad}}-{self.ind_hi:0>{pad}}",
                 savedir=invm_dir,
                 stype="npz",
                 absolute=True,
