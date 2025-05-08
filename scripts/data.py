@@ -1,11 +1,13 @@
 import numpy as np
 from constants import INVMS
+from events import get_invms
 from numpy.typing import NDArray
-from qc_utilities import get_invms
 from type_hints import evts_type
 
 
-def split_data(evts: evts_type) -> tuple[NDArray[evts_type], NDArray[NDArray[int]]]:
+def split_data(
+    evts: evts_type,
+) -> tuple[NDArray[evts_type], NDArray[NDArray[int]]]:
     """
     Splits up the events by their invariant masses into groups defined by
     the constant `INVMS`. Returns the split events and the indices for those events.
@@ -25,5 +27,7 @@ def split_data(evts: evts_type) -> tuple[NDArray[evts_type], NDArray[NDArray[int
 
     # Sanity check, each element should be same size
     if len(set([len(split) for split in split_evts])) != 1:
-        raise Exception("Length of each invariant mass split should be the same")
+        raise Exception(
+            "Length of each invariant mass split should be the same"
+        )
     return np.array(split_evts), np.array(split_inds)

@@ -1,8 +1,8 @@
 from typing import Optional, Sequence, Union
 
 import numpy as np
+from events import get_Jijs, get_Pijs
 from numpy.typing import NDArray
-from qc_utilities import get_Jijs, get_Pijs
 from type_hints import evts_type
 
 
