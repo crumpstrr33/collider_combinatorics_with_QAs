@@ -42,8 +42,8 @@ from .constants import (
     SYM_TRUE_BS_DICT,
 )
 from .data import split_data
-from .events import get_data, swap
-from .hamiltonians import get_coefficients, get_minimum_energies
+from .events import get_data,
+from .hamiltonians import get_coefficients, get_minimum_energies, swap
 from .pennylane_algs import FALQON, MAQAOA, QAOA, XQAOA
 
 
