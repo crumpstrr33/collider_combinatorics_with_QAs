@@ -17,7 +17,11 @@ from pathlib import Path
 from typing import Sequence
 
 import numpy as np
-from constants import (
+from my_favorite_things import save
+from numpy.typing import NDArray
+from scipy.special import comb
+
+from .constants import (
     ALG_CHOICES,
     DATA_CHOICES,
     DEFAULT_BETA0,
@@ -37,14 +41,10 @@ from constants import (
     OUTPUT_DIR,
     SYM_TRUE_BS_DICT,
 )
-from events import get_data, swap
-from hamiltonians import get_coefficients, get_minimum_energies
-from my_favorite_things import save
-from numpy.typing import NDArray
-from pennylane_algs import FALQON, MAQAOA, QAOA, XQAOA
-from scipy.special import comb
-
-from data import split_data
+from .data import split_data
+from .events import get_data, swap
+from .hamiltonians import get_coefficients, get_minimum_energies
+from .pennylane_algs import FALQON, MAQAOA, QAOA, XQAOA
 
 
 class Efficiency:

@@ -1,8 +1,9 @@
 import numpy as np
-from constants import INVMS
-from events import get_invms
 from numpy.typing import NDArray
-from type_hints import evts_type
+
+from .constants import INVMS
+from .events import get_invms
+from .type_hints import evts_type
 
 
 def split_data(

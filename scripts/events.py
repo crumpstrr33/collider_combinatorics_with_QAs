@@ -3,9 +3,10 @@ from random import choice
 from typing import Optional, Union
 
 import numpy as np
-from constants import MASS_NORM_DICT, METRIC
 from numpy.typing import NDArray
-from type_hints import Jijs_type, Pijs_type, evt_type, evts_type
+
+from .constants import MASS_NORM_DICT, METRIC
+from .type_hints import Jijs_type, Pijs_type, evt_type, evts_type
 
 
 def get_Pijs(evts: evts_type) -> Pijs_type:
