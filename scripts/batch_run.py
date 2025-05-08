@@ -14,7 +14,7 @@ from constants import LOG_DIR
 from .data import split_data
 from .events import get_data
 
-runs_per_invm_per_core = 1000
+runs_per_invm_per_core = 100
 
 
 def main(
@@ -91,10 +91,10 @@ if __name__ == "__main__":
     etype = "ttbar"
     dtype = "parton"
     hamiltonian = "H2"
-    depth = 3
+    depth = 5
     steps = 1000
-    lambda_nume = ["max", "Pij"]
-    lambda_denom = ["min", "Jij"]
+    lambda_nume = ["min", "Jij"]
+    lambda_denom = ["max", "Pij"]
     norm = "max"
 
     main(
