@@ -7,6 +7,7 @@ that is 20 cores used total, with 2,000*6/20 = 12,000 / 20 = 600 jobs per core.
 
 import os
 from subprocess import Popen
+from typing import Optional
 
 import numpy as np
 
@@ -24,9 +25,9 @@ def main(
     hamiltonian: str,
     depth: int,
     steps: int,
-    lambda_nume: tuple[str, str],
-    lambda_denom: tuple[str, str],
     norm: str,
+    lambda_nume: Optional[tuple[str, str]] = None,
+    lambda_denom: Optional[tuple[str, str]] = None,
 ) -> None:
     # e.g. 2000
     evts_per_invm = split_data(get_data(etype=etype, dtype=dtype)[0])[0].shape[1]
@@ -34,10 +35,11 @@ def main(
     ind_pairs = np.dstack((ind_lims[:-1], ind_lims[1:]))[0]
 
     # Create string of attributes for log file name
+    ham_str = hamiltonian
     if hamiltonian == "H2":
         lambda_nume = lambda_nume
         lambda_denom = lambda_denom
-        ham_str = f"{hamiltonian}-{''.join(lambda_nume)}-{''.join(lambda_denom)}"
+        ham_str = f"-{''.join(lambda_nume)}-{''.join(lambda_denom)}"
     attrs = f"{dtype}_{etype}_{alg}_p{depth}_{ham_str}_{norm}"
 
     print("\nCOMMANDS TO BE RAN:")
@@ -54,8 +56,8 @@ def main(
                 f"--hamiltonian {hamiltonian}",
                 f"--indlims {ind_lo} {ind_hi}",
                 f"--steps {steps}",
-                f"--lambdanume {' '.join(lambda_nume)}",
-                f"--lambdadenom {' '.join(lambda_denom)}",
+                f"--lambdanume {' '.join(lambda_nume)}" if lambda_nume else "",
+                f"--lambdadenom {' '.join(lambda_denom)}" if lambda_denom else "",
                 f"--norm {norm}",
             ]
         ).split()
@@ -100,7 +102,7 @@ if __name__ == "__main__":
         hamiltonian=hamiltonian,
         depth=depth,
         steps=steps,
+        norm=norm,
         lambda_nume=lambda_nume,
         lambda_denom=lambda_denom,
-        norm=norm,
     )
