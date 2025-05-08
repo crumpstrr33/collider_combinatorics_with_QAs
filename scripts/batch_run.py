@@ -10,9 +10,9 @@ from subprocess import Popen
 
 import numpy as np
 from constants import LOG_DIR
-from qc_utilities import get_data
 
-from data import split_data
+from .data import split_data
+from .events import get_data
 
 runs_per_invm_per_core = 1000
 
