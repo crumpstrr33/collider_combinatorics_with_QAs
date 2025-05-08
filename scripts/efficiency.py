@@ -37,11 +37,11 @@ from constants import (
     OUTPUT_DIR,
     SYM_TRUE_BS_DICT,
 )
+from events import get_data, swap
 from hamiltonians import get_coefficients, get_minimum_energies
 from my_favorite_things import save
 from numpy.typing import NDArray
 from pennylane_algs import FALQON, MAQAOA, QAOA, XQAOA
-from qc_utilities import get_data, swap
 from scipy.special import comb
 
 from data import split_data
@@ -141,6 +141,8 @@ class Efficiency:
         # Create arrays of shape: [num_invm_bins, num_evts, ...], splits it all
         # up to be per event per invariant mass bin
         split_evts, split_inds = split_data(evts=self.p4s)
+        # Total number of event, e.g. 200
+        self.tot_evts = split_evts.shape[1]
         self.p4s = split_evts[:, self.ind_lo : self.ind_hi, ...]
         self.Jijs = self.Jijs[split_inds][:, self.ind_lo : self.ind_hi, ...]
         self.Pijs = self.Pijs[split_inds][:, self.ind_lo : self.ind_hi, ...]
@@ -179,8 +181,6 @@ class Efficiency:
         Parameters:
         coeff - The coefficient matrix.
         """
-        # Do operation over the last two dimensions
-        axes = (-2, -1)
         match self.norm_scheme:
             case "none":
                 return self.coeffs
@@ -191,7 +191,9 @@ class Efficiency:
             case "sum":
                 oper = np.sum
 
-        return self.coeffs / oper(self.coeffs, axis=axes)[..., None, None]
+        # Do operation over the last two dimensions and reshape to shape of
+        # full coeffs array
+        return self.coeffs / oper(self.coeffs, axis=(-2, -1))[..., None, None]
 
     def get_output_data(self) -> None:
         """
@@ -297,7 +299,7 @@ class Efficiency:
 
             # Save all the info
             save(
-                name=f"eff_{self.ind_lo}-{self.ind_hi}",
+                name=f"eff_{self.ind_lo:0>{self.tot_evts}}-{self.ind_hi:0>{self.tot_evts}}",
                 savedir=invm_dir,
                 stype="npz",
                 absolute=True,
