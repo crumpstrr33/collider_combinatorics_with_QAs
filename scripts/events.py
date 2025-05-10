@@ -143,4 +143,9 @@ def get_event(
     if ind is None:
         ind = choice(invm_inds)
 
-    return evts[ind], Jijs[ind], Pijs[ind], invms[ind]
+    return (
+        evts[invm_inds][ind],
+        Jijs[invm_inds][ind],
+        Pijs[invm_inds][ind],
+        invms[invm_inds][ind],
+    )
