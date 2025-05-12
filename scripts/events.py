@@ -72,6 +72,7 @@ def get_data(
     etype: str = "ttbar",
     dtype: str = "parton",
     data_path: Optional[Union[str, Path]] = None,
+    print_num_evts: bool = True,
 ) -> evts_type:
     """
     Grabs all the relevant data for a given event and data type. Returns events
@@ -85,6 +86,8 @@ def get_data(
         or "smeared".
     data_path (default None) - Argument that can be specified to give the
         explicit path to where the data file is. Replacing `etype` and `dtype`.
+    print_num_evts (default True) - If True, will print a statement with the number
+        of events and the path to the events.
     """
     if data_path is None:
         data_dir = Path(__file__).parents[1] / "data"
@@ -105,7 +108,8 @@ def get_data(
     Jijs, Pijs = get_Jijs(evts=evts, return_Pijs=True)
     invms = get_invms(evts, etype=etype)
 
-    print(f"Loaded {len(invms):,} events from: {data_path}")
+    if print_num_evts:
+        print(f"Loaded {len(invms):,} events from: {data_path}")
     return evts, Jijs, Pijs, invms
 
 

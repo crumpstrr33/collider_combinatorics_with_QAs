@@ -3,11 +3,11 @@ from collections import defaultdict
 from typing import Optional
 
 import numpy as np
+from constants import INVMS, OUTPUT_DIR
+from events import get_data
 from numpy.typing import NDArray
 
-from .constants import INVMS, OUTPUT_DIR
-from .data import split_data
-from .events import get_data
+from data import split_data
 
 
 def parse_data() -> NDArray[NDArray[str]]:
@@ -94,7 +94,7 @@ def verify_data(
         in the H2 Hamiltonian.
     """
     # Find the total number of events per invariant mass bin
-    evts, _, _, _ = get_data(etype=etype, dtype=dtype)
+    evts, _, _, _ = get_data(etype=etype, dtype=dtype, print_num_evts=False)
     split_evts, _ = split_data(evts=evts)
     num_evts = split_evts.shape[1]
 
@@ -136,7 +136,11 @@ def verify_data(
             inds = np.arange(*pair)
             # Make sure we don't have duplicates of events
             if not np.all(np.in1d(inds, all_inds)):
+                p_str = f"{etype} | {dtype} | {alg} | p={depth} | {norm} | {hamiltonian} "
+                if lambda_nume is not None:
+                    p_str += f" {lambda_nume} / {lambda_denom}"
                 print(
+                    f"{p_str}\n"
                     f"{invm:.2f} -- "
                     f"Found duplicate indices looking at range {pair}"
                 )
