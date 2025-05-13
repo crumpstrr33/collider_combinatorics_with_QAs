@@ -497,7 +497,7 @@ class FALQON:
             self._cur_state = state_qnode()
             self._new_beta = -beta
 
-        self.betas = numpy.array(self.betas)
+        self.betas = np.array(self.betas)
         # To put in same format as with the parameters for other algorithms
         self.params = [self.betas]
 
