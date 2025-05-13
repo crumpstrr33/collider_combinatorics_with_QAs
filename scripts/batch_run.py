@@ -5,6 +5,7 @@ to each core. If `runs_per_invm_per_core=100`, then, with 2000 events per bin,
 that is 20 cores used total, with 2,000*6/20 = 12,000 / 20 = 600 jobs per core.
 """
 
+import os
 from contextlib import redirect_stderr, redirect_stdout
 from functools import partial
 from multiprocessing import Pool
@@ -51,6 +52,7 @@ def worker(
     attrs = f"{dtype}_{etype}_{alg}_p{depth}_{ham_str}_{norm_scheme}"
     out_path = LOG_DIR / f"job_{attrs}_{ind_lo:0>6}-{ind_hi:0>6}.out"
     err_path = LOG_DIR / f"job_{attrs}_{ind_lo:0>6}-{ind_hi:0>6}.err"
+    os.makedirs(LOG_DIR, exist_ok=True)
 
     # Create contexts for stdout and stderr files
     with open(out_path, "w") as fout, open(err_path, "w") as ferr:
@@ -100,6 +102,8 @@ def main(
     lambda_nume: Optional[tuple[str, str]] = None,
     lambda_denom: Optional[tuple[str, str]] = None,
     shots: Optional[int] = None,
+    evts_per_invm: Optional[int] = None,
+    dryrun: bool = True,
 ) -> None:
     """
     Main function to run jobs. Distributes jobs in Pool to run.
@@ -124,16 +128,27 @@ def main(
         in the H2 Hamiltonian.
     shots - The number of shots to do each circuit run. If None, use infinite
         shots, the ideal case.
+    evts_per_invm (default None) - Total number of events to use per invariant
+        mass bin. If None, uses all of them.
+    dryrun (defaul True) - If True, will not actually run jobs.
     """
     # Print used parameters
     print("Parameters:")
     pprint(locals())
-    partial_worker = partial(worker, **locals())
+    ignored = ["ignored", "evts_per_invm", "dryrun"]
+    partial_worker = partial(
+        worker, **{k: v for k, v in locals().items() if k not in ignored}
+    )
 
-    # Find number of events each invariant mass bin will have (assuming equal)
-    evts_per_invm = split_data(
-        get_data(etype=etype, dtype=dtype, print_num_evts=False)[0]
-    )[0].shape[1]
+    # Find number of events each invariant mass bin will have (assuming equal
+    # numbers per bin). Can be specified so as to not use all data
+    evts_per_invm = (
+        split_data(get_data(etype=etype, dtype=dtype, print_num_evts=False)[0])[
+            0
+        ].shape[1]
+        if evts_per_invm is None
+        else evts_per_invm
+    )
     # Find the index limits of each job, e.g. [0, 100, 200, 300, ...]
     ind_lims = np.arange(0, evts_per_invm + 1, runs_per_invm_per_core)
     # Turn those limits into tuple for low and high limits for each job
@@ -146,17 +161,22 @@ def main(
     print(f"\nUsing {len(ind_lims) - 1} cores.")
 
     # Run jobs!
-    with Pool() as pool:
-        pool.starmap(partial_worker, ind_pairs)
+    if dryrun:
+        print("This was a dryrun. Ending...")
+    else:
+        with Pool() as pool:
+            pool.starmap(partial_worker, ind_pairs)
 
 
 if __name__ == "__main__":
-    alg = "QAOA"
+    evts_per_invm = None
+
+    alg = "MAQAOA"
     etype = "ttbar"
     dtype = "parton"
     hamiltonian = "H2"
-    depth = 2
-    steps = 10
+    depth = 5
+    steps = 1000
     lambda_nume = ["min", "Jij"]
     lambda_denom = ["max", "Pij"]
     norm_scheme = "max"
@@ -171,4 +191,6 @@ if __name__ == "__main__":
         norm_scheme=norm_scheme,
         lambda_nume=lambda_nume,
         lambda_denom=lambda_denom,
+        dryrun=False,
+        evts_per_invm=evts_per_invm,
     )
