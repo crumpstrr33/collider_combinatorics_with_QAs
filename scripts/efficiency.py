@@ -1,20 +1,8 @@
-"""
-In this script, the method `efficiency` is given a list of event indices and the chosen
-algorithm is ran for those indices and the passed parameters. Various data are saved in
-a dictionary but of important is placement, i.e. whether the algorithm found the correct
-answer as most likely (placement = 1), 2nd most likely (placement = 2) and so on.
-
-Below "symmetric" or `sym` refers to the fact that "111000" and "000111" represent the
-same answer and so the number counts for each are combined. Also "3+3" or `3p3` refers
-to assuming that the answer must have three 1's and three 0's, i.e. three particle
-assigned to each decaying top quark.
-"""
-
 import os
 from argparse import ArgumentParser, BooleanOptionalAction
 from datetime import datetime as dt
 from pathlib import Path
-from typing import Sequence
+from typing import Optional, Sequence
 
 import numpy as np
 from my_favorite_things import save
@@ -47,7 +35,7 @@ from .hamiltonians import get_coefficients, get_minimum_energies, swap
 from .pennylane_algs import FALQON, MAQAOA, QAOA, XQAOA
 
 
-class Efficiency:
+class JobRunner:
     def __init__(
         self,
         etype: str,
@@ -213,8 +201,7 @@ class Efficiency:
             sym_probs_arr = np.empty((N_evts, 2 ** (num_fsp - 1)))
             costs_arr = np.empty((N_evts, self.steps))
             params_arr = [
-                np.empty((N_evts, *param_shape))
-                for param_shape in self.param_shapes
+                np.empty((N_evts, *param_shape)) for param_shape in self.param_shapes
             ]
             expval_arr = np.empty(N_evts)
             evals_arr = np.empty(N_evts)
@@ -251,9 +238,7 @@ class Efficiency:
                 expval = costs[-1]
                 evals = self.alg.evals
                 rank, prob = self.find_rank_and_prob(make_symmetric=False)
-                sym_rank, sym_prob = self.find_rank_and_prob(
-                    make_symmetric=True
-                )
+                sym_rank, sym_prob = self.find_rank_and_prob(make_symmetric=True)
 
                 print(
                     f"| {self.alg_str.upper()} time: {tot_time:.2f} "
@@ -347,79 +332,62 @@ class Efficiency:
         self.get_output_data()
 
 
-if __name__ == "__main__":
-    parser = ArgumentParser()
-    # Algorithm to use, e.g. QAOA, FALQON, etc
-    parser.add_argument(
-        "--algorithm", "-a", required=True, type=str.lower, choices=ALG_CHOICES
-    )
-    # Type of event to run on, e.g. ttbar or tW
-    parser.add_argument(
-        "--etype", "-e", required=True, type=str, choices=EVENT_CHOICES
-    )
-    # Data to run on, e.g. parton or smeared
-    parser.add_argument(
-        "--dtype", "-D", required=True, type=str.lower, choices=DATA_CHOICES
-    )
-    # Coefficient of the quadratic term, e.g. og for Jij or qa for Jij + 2λPij
-    parser.add_argument(
-        "--hamiltonian",
-        "-H",
-        required=True,
-        type=str,
-        choices=HAMILTONIAN_CHOICES,
-    )
-    # How to normalize the coefficient matrix
-    parser.add_argument(
-        "--norm", required=True, type=str.lower, choices=NORM_CHOICES
-    )
-    # Specify lambda, e.g. --lambda-nume min Jij
-    parser.add_argument("--lambdanume", required=False, type=str, nargs=2)
-    parser.add_argument("--lambdadenom", required=False, type=str, nargs=2)
-    # The device to use for pennylane
-    parser.add_argument("--device", type=str, default=DEFAULT_DEVICE)
-    # Number of shots, defaults to None == infinite
-    parser.add_argument("--shots", "-s", required=False)
-    # The lower and upper limit of events to run, must match an index file
-    parser.add_argument("--indlims", "-i", required=True, type=int, nargs=2)
-    # Depth of circuit
-    parser.add_argument("--depth", "-d", required=True, type=int)
-    # If set, will not run simulation or save data at the end
-    parser.add_argument("--dryrun", action=BooleanOptionalAction, default=False)
-    ## ARGUMENTS FOR HYBRID ALGORITHMS
-    # Max number of steps for optimizer
-    parser.add_argument("--steps", "-S", default=DEFAULT_STEPS, type=int)
-    # Optimizer to use, e.g. adam
-    parser.add_argument(
-        "--optimizer",
-        "-o",
-        type=str,
-        default=DEFAULT_OPTIMIZER,
-        choices=OPTIMIZERS,
-    )
-    # Stepsize of optimizer
-    parser.add_argument("--stepsize", default=DEFAULT_STEPSIZE, type=float)
-    ## ARGUMENTS FOR FALQON
-    # Time step
-    parser.add_argument("--dt", "-t", default=DEFAULT_DT, type=float)
-    # Initial parameter value
-    parser.add_argument("--initbeta", "-b", default=DEFAULT_BETA0, type=float)
+def run_jobs(
+    etype: str,
+    dtype: str,
+    ind_lo: int,
+    ind_hi: int,
+    alg: str,
+    depth: int,
+    hamiltonian: str,
+    norm_scheme: str,
+    device: str,
+    steps: int,
+    lambda_nume: tuple[str, str],
+    lambda_denom: tuple[str, str],
+    shots: Optional[int],
+):
+    """
+    Wrapper function for the JobRunner class. Essentially will run an algorithm
+    with all the given parameters for a specific number of jobs for every
+    invariant mass bin. For example, if `ind_lo=10` and `ind_hi=25`. Then it
+    will run 15 jobs for each of the bins starting with the 10th event that is
+    between each bin, then the 11th, etc.
 
-    args = parser.parse_args()
-
+    Parameters:
+    etype - The event type, currently can be "ttbar", "tW" or "6jet".
+    dtype - The data type, currently can be "parton" or "smeared".
+    ind_lo - The lower index of events to run the algorithm on, inclusive.
+    ind_hi - The higher index of events to run the algorithm on, exclusive.
+    alg - The algorithm used for the data. Currently can be "qaoa", "maqaoa",
+        "xqaoa", or "falqon".
+    depth - The depth of the circuit ran
+    hamiltonian - Which Hamiltonian used. Can be "H0", "H1", or "H2". If "H2",
+        must define `lambda_nume` and `lambda_denom`.
+    norm_scheme - The normalization scheme used for the coefficient matrix. Can
+        be "max", "mean", or "sum".
+    device - The Pennylane device to use, e.g. "default.qubit".
+    steps - The number of classical optimization steps for the VQA to take
+    lambda_nume - The numerator of the lambda coefficient used in
+        the H2 Hamiltonian.
+    lambda_denom - The denominator of the lambda coefficient used
+        in the H2 Hamiltonian.
+    shots - The number of shots to do each circuit run. If None, use infinite
+        shots, the ideal case.
+    """
     # Make sure order of lims is enforced
-    if not (args.indlims[0] < args.indlims[1]):
+    if not ind_lo < ind_hi:
         raise Exception(
             "The first value for `indlims` must be the smaller of the two."
-            + f" It is {args.indlims}"
+            + f" It is [{ind_lo}, {ind_hi}]"
         )
     # If we need arguments for lambda, make sure they are of a correct form
-    if args.hamiltonian == "H2":
+    if hamiltonian == "H2":
         if (
-            args.lambdanume[0] not in LAMBDA_OPERS
-            or args.lambdanume[1] not in LAMBDA_VALS
-            or args.lambdadenom[0] not in LAMBDA_OPERS
-            or args.lambdadenom[1] not in LAMBDA_VALS
+            lambda_nume[0] not in LAMBDA_OPERS
+            or lambda_nume[1] not in LAMBDA_VALS
+            or lambda_denom[0] not in LAMBDA_OPERS
+            or lambda_denom[1] not in LAMBDA_VALS
         ):
             raise Exception(
                 "Lambda arguments are incorrect. Operators must be from: "
@@ -427,53 +395,38 @@ if __name__ == "__main__":
             )
 
     # Temporary stops
-    if args.shots is not None:
+    if shots is not None:
         raise Exception("Finite shot functionality has been removed! (for now)")
-    if args.algorithm.lower() == "falqon":
+    if alg.lower() == "falqon":
         raise Exception("FALQON doesn't work! (yet)")
 
     # Make a more specific string if we need to specify the lambda coefficient
-    ham_str = args.hamiltonian
-    if args.hamiltonian == "H2":
-        lambda_nume = args.lambdanume
-        lambda_denom = args.lambdadenom
-        ham_str = (
-            f"{args.hamiltonian}-{''.join(lambda_nume)}-{''.join(lambda_denom)}"
-        )
-    # Make run specific directory, if it already exists we DO want an error
+    ham_str = hamiltonian
+    if hamiltonian == "H2":
+        lambda_nume = lambda_nume
+        lambda_denom = lambda_denom
+        ham_str += f"-{''.join(lambda_nume)}-{''.join(lambda_denom)}"
+    # Make run specific directory
     root_dir = (
-        OUTPUT_DIR
-        / args.algorithm
-        / f"{args.etype}_{args.dtype}_{args.depth}_{ham_str}_{args.norm}"
+        OUTPUT_DIR / alg.lower() / f"{etype}_{dtype}_{depth}_{ham_str}_{norm_scheme}"
     )
     os.makedirs(root_dir, exist_ok=True)
 
     # Stuff that differs between QAOA and FALQON
-    match args.algorithm.lower():
-        case "falqon":
-            alg_kwargs = {
-                "shots": args.shots,
-                "dt": args.dt,
-                "initbeta": args.initbeta,
-            }
-        case _:
-            alg_kwargs = {
-                "shots": args.shots,
-                "steps": args.steps,
-            }
+    alg_kwargs = {"shots": shots, "steps": steps, "optimizer": "adam"}
     # Run it!
-    efficiency = Efficiency(
-        etype=args.etype,
-        dtype=args.dtype,
-        ind_lo=args.indlims[0],
-        ind_hi=args.indlims[1],
-        alg=args.algorithm,
-        depth=args.depth,
-        hamiltonian=args.hamiltonian,
-        norm_scheme=args.norm,
-        device=args.device,
+    job_runner = JobRunner(
+        etype=etype,
+        dtype=dtype,
+        ind_lo=ind_lo,
+        ind_hi=ind_hi,
+        alg=alg,
+        depth=depth,
+        hamiltonian=hamiltonian,
+        norm_scheme=norm_scheme,
+        device=device,
         root_dir=root_dir,
         alg_kwargs=alg_kwargs,
-        lambda_kwargs={"nume": args.lambdanume, "denom": args.lambdadenom},
+        lambda_kwargs={"nume": lambda_nume, "denom": lambda_denom},
     )
-    efficiency.run()
+    job_runner.run()

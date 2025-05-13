@@ -5,18 +5,87 @@ to each core. If `runs_per_invm_per_core=100`, then, with 2000 events per bin,
 that is 20 cores used total, with 2,000*6/20 = 12,000 / 20 = 600 jobs per core.
 """
 
-import os
-from pathlib import Path
-from subprocess import Popen
+from contextlib import redirect_stderr, redirect_stdout
+from functools import partial
+from multiprocessing import Pool
+from pprint import pprint
 from typing import Optional
 
 import numpy as np
 
 from .constants import LOG_DIR
 from .data import split_data
+from .efficiency import run_jobs
 from .events import get_data
 
 runs_per_invm_per_core = 100
+
+
+def worker(
+    ind_lo: int,
+    ind_hi: int,
+    etype: str,
+    dtype: str,
+    alg: str,
+    depth: int,
+    hamiltonian: str,
+    norm_scheme: str,
+    device: str,
+    steps: int,
+    lambda_nume: tuple[str, str],
+    lambda_denom: tuple[str, str],
+    shots: Optional[int],
+) -> None:
+    """
+    An individual, single-core worker to run jobs. To be called by Pool. The
+    arguments are exactly the same as `main`, except in a slightly different
+    order to allow the use of the `partial_worker` function to work, so check
+    `main` for explanation of parameters.
+    """
+    # Create file names for output and error files in log directory
+    ham_str = hamiltonian
+    if hamiltonian == "H2":
+        lambda_nume = lambda_nume
+        lambda_denom = lambda_denom
+        ham_str += f"-{''.join(lambda_nume)}-{''.join(lambda_denom)}"
+    attrs = f"{dtype}_{etype}_{alg}_p{depth}_{ham_str}_{norm_scheme}"
+    out_path = LOG_DIR / f"job_{attrs}_{ind_lo:0>6}-{ind_hi:0>6}.out"
+    err_path = LOG_DIR / f"job_{attrs}_{ind_lo:0>6}-{ind_hi:0>6}.err"
+
+    # Create contexts for stdout and stderr files
+    with open(out_path, "w") as fout, open(err_path, "w") as ferr:
+        # Redirect stdout and stdout to these files
+        with redirect_stdout(fout), redirect_stderr(ferr):
+            # Run job
+            try:
+                print(f" {'-' * 10} PARAMS {'-' * 10} ")
+                for k, v in locals().items():
+                    if k not in ["fout", "ferr", "ham_str"]:
+                        print(f"{k} -- {v}")
+
+                print(f"\n {'-' * 10} START OF JOBS {'-' * 10} ")
+                run_jobs(
+                    etype=etype,
+                    dtype=dtype,
+                    ind_lo=ind_lo,
+                    ind_hi=ind_hi,
+                    alg=alg,
+                    depth=depth,
+                    hamiltonian=hamiltonian,
+                    norm_scheme=norm_scheme,
+                    device=device,
+                    steps=steps,
+                    lambda_nume=lambda_nume,
+                    lambda_denom=lambda_denom,
+                    shots=shots,
+                )
+            # Or error to file
+            except Exception:
+                from traceback import print_exc
+
+                # Writes error to file
+                print_exc(file=ferr)
+                raise Exception("Job failed.")
 
 
 def main(
@@ -26,75 +95,71 @@ def main(
     hamiltonian: str,
     depth: int,
     steps: int,
-    norm: str,
+    norm_scheme: str,
+    device: str = "default.qubit",
     lambda_nume: Optional[tuple[str, str]] = None,
     lambda_denom: Optional[tuple[str, str]] = None,
+    shots: Optional[int] = None,
 ) -> None:
-    # e.g. 2000
-    evts_per_invm = split_data(get_data(etype=etype, dtype=dtype)[0])[0].shape[1]
+    """
+    Main function to run jobs. Distributes jobs in Pool to run.
+
+    Parameters:
+    etype - The event type, currently can be "ttbar", "tW" or "6jet".
+    dtype - The data type, currently can be "parton" or "smeared".
+    ind_lo - The lower index of events to run the algorithm on, inclusive.
+    ind_hi - The higher index of events to run the algorithm on, exclusive.
+    alg - The algorithm used for the data. Currently can be "qaoa", "maqaoa",
+        "xqaoa", or "falqon".
+    depth - The depth of the circuit ran
+    hamiltonian - Which Hamiltonian used. Can be "H0", "H1", or "H2". If "H2",
+        must define `lambda_nume` and `lambda_denom`.
+    norm_scheme - The normalization scheme used for the coefficient matrix. Can
+        be "max", "mean", or "sum".
+    device - The Pennylane device to use, e.g. "default.qubit".
+    steps - The number of classical optimization steps for the VQA to take
+    lambda_nume - The numerator of the lambda coefficient used in
+        the H2 Hamiltonian.
+    lambda_denom - The denominator of the lambda coefficient used
+        in the H2 Hamiltonian.
+    shots - The number of shots to do each circuit run. If None, use infinite
+        shots, the ideal case.
+    """
+    # Print used parameters
+    print("Parameters:")
+    pprint(locals())
+    partial_worker = partial(worker, **locals())
+
+    # Find number of events each invariant mass bin will have (assuming equal)
+    evts_per_invm = split_data(
+        get_data(etype=etype, dtype=dtype, print_num_evts=False)[0]
+    )[0].shape[1]
+    # Find the index limits of each job, e.g. [0, 100, 200, 300, ...]
     ind_lims = np.arange(0, evts_per_invm + 1, runs_per_invm_per_core)
+    # Turn those limits into tuple for low and high limits for each job
     ind_pairs = np.dstack((ind_lims[:-1], ind_lims[1:]))[0]
 
-    # Create string of attributes for log file name
-    ham_str = hamiltonian
-    if hamiltonian == "H2":
-        lambda_nume = lambda_nume
-        lambda_denom = lambda_denom
-        ham_str = f"-{''.join(lambda_nume)}-{''.join(lambda_denom)}"
-    attrs = f"{dtype}_{etype}_{alg}_p{depth}_{ham_str}_{norm}"
-
-    print("\nCOMMANDS TO BE RAN:")
-    cmds = []
-    for ind_lo, ind_hi in ind_pairs:
-        cmd = " ".join(
-            [
-                "python",
-                str(Path(__file__).parent / "efficiency.py"),
-                f"--algorithm {alg}",
-                f"--etype {etype}",
-                f"--dtype {dtype}",
-                f"--depth {depth}",
-                f"--hamiltonian {hamiltonian}",
-                f"--indlims {ind_lo} {ind_hi}",
-                f"--steps {steps}",
-                f"--lambdanume {' '.join(lambda_nume)}" if lambda_nume else "",
-                f"--lambdadenom {' '.join(lambda_denom)}" if lambda_denom else "",
-                f"--norm {norm}",
-            ]
-        ).split()
-
-        print(" ".join(cmd))
-        cmds.append(cmd)
-
+    # Print index limits that are going to be used
+    print("\nIndex pairs:")
+    for ind_pair in ind_pairs:
+        print(f"\t{ind_pair}")
     print(f"\nUsing {len(ind_lims) - 1} cores.")
-    cont = input("Continue? [y/N]")
 
-    if cont.lower() == "y":
-        os.makedirs(LOG_DIR, exist_ok=True)
-        for cmd, ind_pair in zip(cmds, ind_pairs):
-            ind_lo, ind_hi = ind_pair
-            # Log file name
-            log_file = f"log_{attrs}_{ind_lo}-{ind_hi}.log"
-            err_file = f"err_{attrs}_{ind_lo}-{ind_hi}.log"
-            with (
-                open(LOG_DIR / log_file, "w") as log,
-                open(LOG_DIR / err_file, "w") as err,
-            ):
-                Popen(cmd, stdout=log, stderr=err)
-    else:
-        print("Aborting...")
+    # Run jobs!
+    with Pool() as pool:
+        pool.starmap(partial_worker, ind_pairs)
 
 
 if __name__ == "__main__":
-    alg = "MAQAOA"
+    alg = "QAOA"
     etype = "ttbar"
     dtype = "parton"
     hamiltonian = "H2"
-    depth = 5
-    steps = 1000
+    depth = 2
+    steps = 10
     lambda_nume = ["min", "Jij"]
     lambda_denom = ["max", "Pij"]
-    norm = "max"
+    norm_scheme = "max"
 
     main(
         alg=alg,
@@ -103,7 +168,7 @@ if __name__ == "__main__":
         hamiltonian=hamiltonian,
         depth=depth,
         steps=steps,
-        norm=norm,
+        norm_scheme=norm_scheme,
         lambda_nume=lambda_nume,
         lambda_denom=lambda_denom,
     )
