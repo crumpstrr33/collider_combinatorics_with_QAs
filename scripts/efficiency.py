@@ -1,5 +1,4 @@
 import os
-from argparse import ArgumentParser, BooleanOptionalAction
 from datetime import datetime as dt
 from pathlib import Path
 from typing import Optional, Sequence
@@ -10,22 +9,10 @@ from numpy.typing import NDArray
 from scipy.special import comb
 
 from .constants import (
-    ALG_CHOICES,
-    DATA_CHOICES,
-    DEFAULT_BETA0,
-    DEFAULT_DEVICE,
-    DEFAULT_DT,
-    DEFAULT_OPTIMIZER,
-    DEFAULT_STEPS,
-    DEFAULT_STEPSIZE,
-    EVENT_CHOICES,
-    HAMILTONIAN_CHOICES,
     INVMS,
     LAMBDA_OPERS,
     LAMBDA_VALS,
-    NORM_CHOICES,
     NUM_FSP_DICT,
-    OPTIMIZERS,
     OUTPUT_DIR,
     SYM_TRUE_BS_DICT,
 )
@@ -178,6 +165,8 @@ class JobRunner:
                 oper = np.mean
             case "sum":
                 oper = np.sum
+            case _:
+                raise Exception(f"Don't have norm: {self.norm_scheme}!")
 
         # Do operation over the last two dimensions and reshape to shape of
         # full coeffs array
