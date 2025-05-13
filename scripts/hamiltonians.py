@@ -29,6 +29,8 @@ def get_lambdas(
     shown below. The default values give the the value used in the quantum
     annealing paper: arXiv:2111.07806.
 
+    Don't forget, the numerator is the top of the fraction...
+
     Parameters:
     evts - A (N, n_fsp, 4) numpy array where N is any number, and n_fsp is the
         number of final state particles for this specific event.
