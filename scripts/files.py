@@ -3,11 +3,11 @@ from collections import defaultdict
 from typing import Optional
 
 import numpy as np
-from constants import INVMS, OUTPUT_DIR
-from events import get_data
 from numpy.typing import NDArray
 
-from data import split_data
+from .constants import INVMS, OUTPUT_DIR
+from .data import split_data
+from .events import get_data
 
 
 def parse_data() -> NDArray[NDArray[str]]:
