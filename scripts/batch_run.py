@@ -6,6 +6,7 @@ that is 20 cores used total, with 2,000*6/20 = 12,000 / 20 = 600 jobs per core.
 """
 
 import os
+from pathlib import Path
 from subprocess import Popen
 from typing import Optional
 
@@ -48,7 +49,7 @@ def main(
         cmd = " ".join(
             [
                 "python",
-                "efficiency.py",
+                str(Path(__file__).parent / "efficiency.py"),
                 f"--algorithm {alg}",
                 f"--etype {etype}",
                 f"--dtype {dtype}",
