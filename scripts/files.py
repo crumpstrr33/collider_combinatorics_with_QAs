@@ -1,6 +1,6 @@
 import re
 from collections import defaultdict
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 from numpy.typing import NDArray
@@ -17,7 +17,7 @@ def parse_data() -> NDArray[NDArray[str]]:
     """
     # Regex strign for extracting info from directory name
     ch = "[a-zA-Z0-9]"
-    re_dir = rf"^({ch}+)_({ch}+)_(\d+)_({ch}+)(?:-({ch}+)-({ch}+))?_({ch}+)$"
+    re_dir = rf"^({ch}+)_({ch}+)_(\d+)_({ch}+)(?:-({ch}+)-({ch}+))?_({ch}+)_(\d+)$"
 
     alg_dirs = OUTPUT_DIR.iterdir()
     params = []
@@ -34,11 +34,10 @@ def parse_data() -> NDArray[NDArray[str]]:
                 lambda_nume,
                 lambda_denom,
                 norm,
+                num_evts,
             ) = re.findall(re_dir, param_dir.name)[0]
 
-            if hamiltonian == "H2" and (
-                lambda_nume == "" or lambda_denom == ""
-            ):
+            if hamiltonian == "H2" and (lambda_nume == "" or lambda_denom == ""):
                 raise Exception(
                     "Hamiltonian is H2, both lambda kwargs must be defined"
                 )
@@ -53,6 +52,7 @@ def parse_data() -> NDArray[NDArray[str]]:
                     dtype,
                     lambda_nume,
                     lambda_denom,
+                    num_evts,
                 ]
             )
 
@@ -61,13 +61,14 @@ def parse_data() -> NDArray[NDArray[str]]:
 
 def verify_data(
     alg: str,
-    depth: int,
+    depth: Union[int, str],
     hamiltonian: str,
     norm: str,
     etype: str = "ttbar",
     dtype: str = "parton",
     lambda_nume: Optional[str] = None,
     lambda_denom: Optional[str] = None,
+    num_evts: Optional[Union[int, str]] = None,
 ) -> bool:
     """
     Makes basic checks on the saved data. If this function returns True, then
@@ -92,17 +93,23 @@ def verify_data(
         the H2 Hamiltonian.
     lambda_denom (default None) - The denominator of the lambda coefficient used
         in the H2 Hamiltonian.
+    num_evts (default None) - Total number of events per invariant mass bin.
     """
     # Find the total number of events per invariant mass bin
-    evts, _, _, _ = get_data(etype=etype, dtype=dtype, print_num_evts=False)
-    split_evts, _ = split_data(evts=evts)
-    num_evts = split_evts.shape[1]
+    if num_evts is None:
+        num_evts = split_data(
+            evts=get_data(etype=etype, dtype=dtype, print_num_evts=False)[0]
+        )[0].shape[1]
+    num_evts = int(num_evts)
+    depth = int(depth)
 
     # Find the root directory for data
     ham_str = hamiltonian
     if hamiltonian == "H2":
         ham_str += f"-{lambda_nume}-{lambda_denom}"
-    root_dir = OUTPUT_DIR / alg / f"{etype}_{dtype}_{depth}_{ham_str}_{norm}"
+    root_dir = (
+        OUTPUT_DIR / alg / f"{etype}_{dtype}_{depth}_{ham_str}_{norm}_{num_evts}"
+    )
 
     # Loop over the invariant mass subdirectories
     for invm in INVMS[:-1]:
@@ -112,9 +119,7 @@ def verify_data(
         # Iterate over each .npz file
         for fpath in invm_dir.iterdir():
             # Get the event indices in this specific file
-            low_ind, hi_ind = re.findall(r"^eff_(\d+)-(\d+)\.npz$", fpath.name)[
-                0
-            ]
+            low_ind, hi_ind = re.findall(r"^eff_(\d+)-(\d+)\.npz$", fpath.name)[0]
             low_ind, hi_ind = int(low_ind), int(hi_ind)
 
             # Save those indicies
@@ -124,6 +129,8 @@ def verify_data(
         max_ind = np.max(ind_pairs)
         # Check to make sure do we do indeed have maximum number of events
         if max_ind != num_evts:
+            print(type(max_ind), max_ind)
+            print(type(num_evts), num_evts)
             print(
                 f"{invm:.2f} -- "
                 "Do not have maximum number of events. Max number from event "
@@ -156,13 +163,14 @@ def verify_data(
 
 def load_data(
     alg: str,
-    depth: int,
+    depth: Union[int, str],
     hamiltonian: str,
     norm: str,
     etype: str = "ttbar",
     dtype: str = "parton",
     lambda_nume: Optional[str] = None,
     lambda_denom: Optional[str] = None,
+    num_evts: Optional[Union[int, str]] = None,
 ) -> dict[float, dict[str, NDArray[np.float64]]]:
     """
     Return a dictionary with the data for a given run of events. The returned
@@ -194,7 +202,9 @@ def load_data(
     ham_str = hamiltonian
     if hamiltonian == "H2":
         ham_str += f"-{lambda_nume}-{lambda_denom}"
-    root_dir = OUTPUT_DIR / alg / f"{etype}_{dtype}_{depth}_{ham_str}_{norm}"
+    root_dir = (
+        OUTPUT_DIR / alg / f"{etype}_{dtype}_{depth}_{ham_str}_{norm}_{num_evts}"
+    )
 
     data = {}
     # Iterate over the invariant masses

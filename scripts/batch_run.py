@@ -36,6 +36,7 @@ def worker(
     lambda_nume: tuple[str, str],
     lambda_denom: tuple[str, str],
     shots: Optional[int],
+    evts_per_invm: int,
 ) -> None:
     """
     An individual, single-core worker to run jobs. To be called by Pool. The
@@ -80,6 +81,7 @@ def worker(
                     lambda_nume=lambda_nume,
                     lambda_denom=lambda_denom,
                     shots=shots,
+                    evts_per_invm=evts_per_invm,
                 )
             # Or error to file
             except Exception:
@@ -132,14 +134,6 @@ def main(
         mass bin. If None, uses all of them.
     dryrun (defaul True) - If True, will not actually run jobs.
     """
-    # Print used parameters
-    print("Parameters:")
-    pprint(locals())
-    ignored = ["ignored", "evts_per_invm", "dryrun"]
-    partial_worker = partial(
-        worker, **{k: v for k, v in locals().items() if k not in ignored}
-    )
-
     # Find number of events each invariant mass bin will have (assuming equal
     # numbers per bin). Can be specified so as to not use all data
     evts_per_invm = (
@@ -149,6 +143,14 @@ def main(
         if evts_per_invm is None
         else evts_per_invm
     )
+    # Print used parameters
+    print("Parameters:")
+    pprint(locals())
+    ignored = ["ignored", "dryrun"]
+    partial_worker = partial(
+        worker, **{k: v for k, v in locals().items() if k not in ignored}
+    )
+
     # Find the index limits of each job, e.g. [0, 100, 200, 300, ...]
     ind_lims = np.arange(0, evts_per_invm + 1, runs_per_invm_per_core)
     # Turn those limits into tuple for low and high limits for each job

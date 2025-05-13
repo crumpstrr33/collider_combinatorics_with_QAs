@@ -335,6 +335,7 @@ def run_jobs(
     lambda_nume: tuple[str, str],
     lambda_denom: tuple[str, str],
     shots: Optional[int],
+    evts_per_invm: int,
 ):
     """
     Wrapper function for the JobRunner class. Essentially will run an algorithm
@@ -363,6 +364,8 @@ def run_jobs(
         in the H2 Hamiltonian.
     shots - The number of shots to do each circuit run. If None, use infinite
         shots, the ideal case.
+    evts_per_invm - Number of events per invariant mass bin. Added to name of
+        data directory so that verifying the data can proceed correctly.
     """
     # Make sure order of lims is enforced
     if not ind_lo < ind_hi:
@@ -397,7 +400,9 @@ def run_jobs(
         ham_str += f"-{''.join(lambda_nume)}-{''.join(lambda_denom)}"
     # Make run specific directory
     root_dir = (
-        OUTPUT_DIR / alg.lower() / f"{etype}_{dtype}_{depth}_{ham_str}_{norm_scheme}"
+        OUTPUT_DIR
+        / alg.lower()
+        / f"{etype}_{dtype}_{depth}_{ham_str}_{norm_scheme}_{evts_per_invm}"
     )
     os.makedirs(root_dir, exist_ok=True)
 
