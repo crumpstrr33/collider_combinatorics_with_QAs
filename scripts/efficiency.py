@@ -156,21 +156,48 @@ class JobRunner:
         Parameters:
         coeff - The coefficient matrix.
         """
+        axes = (-2, -1)
         match self.norm_scheme:
+            # No normalization
             case "none":
-                return self.coeffs
+                norm = np.ones(self.coeffs.shape[:2])
+                shift = np.zeros(self.coeffs.shape[:2])
+            # Divide by the maximum value
             case "max":
-                oper = np.max
+                norm = np.max(self.coeffs, axis=axes)
+                shift = np.zeros(self.coeffs.shape[:2])
+            # Divide by the minimum value
+            case "min":
+                norm = np.min(self.coeffs, axis=axes)
+                shift = np.zeros(self.coeffs.shape[:2])
+            # Divide by the trace of the matrix
+            case "trace":
+                norm = np.trace(self.coeffs, axis1=-2, axis2=-1)
+                shift = np.zeros(self.coeffs.shape[:2])
+            # Divide by the mean of the matrix values
             case "mean":
-                oper = np.mean
+                norm = np.mean(self.coeffs, axis=axes)
+                shift = np.zeros(self.coeffs.shape[:2])
+            # Divide by the sum of the matrix values
             case "sum":
-                oper = np.sum
+                norm = np.sum(self.coeffs, axis=axes)
+                shift = np.zeros(self.coeffs.shape[:2])
+            # Shift by the min and divide by range, goes from 0 to 1
+            case "minmax":
+                norm = np.max(self.coeffs, axis=axes) - np.min(
+                    self.coeffs, axis=axes
+                )
+                shift = np.min(self.coeffs, axis=axes)
+            # Shift by the mean and divide by the standard deviation
+            case "std":
+                norm = np.std(self.coeffs, axis=axes)
+                shift = np.mean(self.coeffs, axis=axes)
             case _:
                 raise Exception(f"Don't have norm: {self.norm_scheme}!")
 
         # Do operation over the last two dimensions and reshape to shape of
         # full coeffs array
-        return self.coeffs / oper(self.coeffs, axis=(-2, -1))[..., None, None]
+        return (self.coeffs - shift[..., None, None]) / norm[..., None, None]
 
     def get_output_data(self) -> None:
         """
