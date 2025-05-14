@@ -10,10 +10,10 @@ from scipy.special import comb
 
 class VQA:
     """
-    Base class for the VQAs. For an algorithm like QAOA, it has two lists of parameters:
-    gammas and betas (and e.g. XQAOA has three with the additional alphas). `params` is
-    a list of each list of parameters and `self.param_shapes` is a list of the numpy
-    shape for each list of parameters.
+    Base class for the VQAs. For an algorithm like QAOA, it has two lists of
+    parameters: gammas and betas (and e.g. XQAOA has three with the additional
+    alphas). `params` is a list of each list of parameters and
+    `self.param_shapes` is a list of the numpy shape for each list of parameters.
     """
 
     OPTIMIZERS = {
@@ -36,30 +36,29 @@ class VQA:
     ):
         """
         In the __init__ for inheriting classes:
-            1) Define the cost and mixer Hamiltonians using self.edges/self.weights for
-            the cost Hamiltonian and self.vertices for the mixer Hamiltonian which are
-            used in your definition for `layer`.
-            2) Define the array shapes for the lists of parameters as a list defined as
-            `self.param_shapes`.
+            1) Define the cost and mixer Hamiltonians using self.edges/
+            self.weights for the cost Hamiltonian and self.vertices for the
+            mixer Hamiltonian which are used in your definition for `layer`.
+            2) Define the array shapes for the lists of parameters as a list
+            defined as `self.param_shapes`.
 
         Parameters:
         coeff - Matrix of coefficients for s_i * s_j spin coupling.
         depth - How many layers in the circuit, written as `p`.
         steps - How many steps to run the optimizer.
-        shots - Number of shots for the circuit, If None, use exact statevector, e.g.
-            an infinite number of shots.
-        prec - How precise the optimizer should be. That is the optimizer won't stop
-            until the difference between the latest two evaluations are less that `prec`
-            or `steps` number of evaluations have been completed. That is, which ever
-            happens first.
-        optimizer - Which optimizer to use: "grad_descent", "adagrad" or "adam" for the
-            gradient descent, adagrad or adam optimizer.
-        opt_kwargs - A dictionary of keyword arguments to pass to the optimizer object.
+        shots - Number of shots for the circuit, If None, use exact statevector,
+            e.g. an infinite number of shots.
+        prec - How precise the optimizer should be. That is the optimizer won't
+            stop until the difference between the latest two evaluations are
+            less that `prec` or `steps` number of evaluations have been
+            completed. That is, which ever happens first.
+        optimizer - Which optimizer to use: "grad_descent", "adagrad" or "adam"
+            for the gradient descent, adagrad or adam optimizer.
+        opt_kwargs - A dictionary of keyword arguments to pass to the optimizer
+            object.
         device - The pennylane device to run on.
         """
-        self._coeff = coeff
-        self.max_coeff = np.max(coeff)
-        self.coeff = self._coeff / self.max_coeff
+        self.coeff = coeff
         self.depth = depth
         self.steps = steps
         self.shots = shots
@@ -88,8 +87,9 @@ class VQA:
 
     def layer(self, *params):
         """
-        Each layer of the VQA. Each arg from `params` is a list of parameters, e.g. QAOA
-        has two: gammas and betas but XQAOA has three: gammas, betas and alphas.
+        Each layer of the VQA. Each arg from `params` is a list of parameters,
+        e.g. QAOA has two: gammas and betas but XQAOA has three: gammas, betas
+        and alphas.
         """
         pass
 
@@ -107,8 +107,8 @@ class VQA:
 
     def _cost_circuit(self, *params):
         """
-        Define `self.expval_op` in inheriting class's __init__. It is the total cost
-        function, usually problem/cost Hamiltonian.
+        Define `self.expval_op` in inheriting class's __init__. It is the total
+        cost function, usually problem/cost Hamiltonian.
         """
         self.circuit(*params)
         return qml.expval(self.expval_op)
@@ -164,13 +164,9 @@ class VQA:
             noisy_device = qml.transforms.insert(
                 self.device, op=qml.BitFlip, op_args=self.bitflip_prob
             )
-            self.cost_qnode = qml.QNode(
-                func=self._cost_circuit, device=noisy_device
-            )
+            self.cost_qnode = qml.QNode(func=self._cost_circuit, device=noisy_device)
         else:
-            self.cost_qnode = qml.QNode(
-                func=self._cost_circuit, device=self.device
-            )
+            self.cost_qnode = qml.QNode(func=self._cost_circuit, device=self.device)
 
         # Run through the steps of the optimizing
         self.costs = qmlnp.empty(self.steps)
@@ -182,9 +178,7 @@ class VQA:
                 self.cost_qnode, *self.params
             )
             if ind:
-                self.current_prec = abs(
-                    1 - self.costs[ind - 1] / self.costs[ind]
-                )
+                self.current_prec = abs(1 - self.costs[ind - 1] / self.costs[ind])
                 if print_it:
                     print(
                         f"{print_pref}"
@@ -248,8 +242,8 @@ class QAOA(VQA):
 class MAQAOA(VQA):
     """
     Instead of a free parameter per layer for the cost Hamiltonian and the mixer
-    Hamiltonian, each gate has its own free parameter. So for a depth of `p` and N
-    qubits, there are (NChoose2 + N)p free parameters (instead of just 2p).
+    Hamiltonian, each gate has its own free parameter. So for a depth of `p` and
+    N qubits, there are (NChoose2 + N)p free parameters (instead of just 2p).
     See: https://www.nature.com/articles/s41598-022-10555-8
     """
 
@@ -348,9 +342,9 @@ class FALQON:
     of i[Hm, Hc] thus removing the need for optimization/backpropagation.
     See: https://arxiv.org/pdf/2103.08619.pdf.
 
-    Since the parameters are fixed once found, this class calculates the state for
-    layer n, then initializes the the next layer with that state so the (n+1)th layer
-    only needs to run a circuit of 1 layer deep.
+    Since the parameters are fixed once found, this class calculates the state
+    for layer n, then initializes the the next layer with that state so the
+    (n+1)th layer only needs to run a circuit of 1 layer deep.
     """
 
     def __init__(
@@ -362,10 +356,7 @@ class FALQON:
         shots=None,
         device="default.qubit",
     ):
-        self._coeff = coeff
-        self.max_coeff = qmlnp.max(coeff)
-        # Keep the quadratic coefficient normalized
-        self.coeff = self._coeff / self.max_coeff
+        self.coeff = coeff
         self.depth = depth
         self.shots = shots
         # Number of final state particles in problem
@@ -419,8 +410,8 @@ class FALQON:
 
     def _state_circuit(self):
         """
-        Finds the output state of the current circuit. Saved in `self._cur_state` and
-        used to initalize the next layer.
+        Finds the output state of the current circuit. Saved in `self._cur_state`
+        and used to initalize the next layer.
         """
         self.circuit(self._new_beta)
         return qml.state()
@@ -434,8 +425,9 @@ class FALQON:
 
     def _param_circuit(self):
         """
-        Circuit to both minimize the cost function (i.e. the expectation value of
-        `self.expval_op` with respect to the circuit) and the next parameter value.
+        Circuit to both minimize the cost function (i.e. the expectation value
+        of `self.expval_op` with respect to the circuit) and the next parameter
+        value.
         """
         self.circuit(self._new_beta)
         return qml.expval(self.expval_op), qml.expval(self.commutator)
@@ -469,9 +461,9 @@ class FALQON:
         """`
         Run the FALQON algorithm
         """
-        # For other algorithms, they stop when cost function stops decreasing at a rate
-        # below some threshold. We don't have that here, so there will a number of
-        # evaluations equal to the depth of the circuit
+        # For other algorithms, they stop when cost function stops decreasing at
+        # a rate below some threshold. We don't have that here, so there will a
+        # number of evaluations equal to the depth of the circuit
         self.evals = self.depth
         self.costs = qmlnp.empty(self.depth)
 
