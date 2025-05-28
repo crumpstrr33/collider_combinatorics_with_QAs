@@ -1,9 +1,11 @@
 from datetime import datetime as dt
 from itertools import combinations, product
 from math import sqrt
+from typing import Optional, Sequence
 
 import numpy as np
 import pennylane as qml
+from numpy.typing import NDArray
 from pennylane import numpy as qmlnp
 from scipy.special import comb
 
@@ -24,15 +26,15 @@ class VQA:
 
     def __init__(
         self,
-        coeff,
-        depth,
-        steps=None,
-        shots=None,
-        prec=1e-8,
-        optimizer="adam",
-        opt_kwargs={},
-        device="default.qubit",
-        bitflip_prob=0,
+        coeff: NDArray[NDArray[float]],
+        depth: int,
+        steps: Optional[int] = None,
+        shots: Optional[int] = None,
+        prec: float = 1e-8,
+        optimizer: str = "adam",
+        opt_kwargs: dict[str, ...] = {},
+        device: str = "default.qubit",
+        bitflip_prob: float = 0,
     ):
         """
         In the __init__ for inheriting classes:
@@ -85,7 +87,7 @@ class VQA:
             [qml.PauliZ(edge[0]) @ qml.PauliZ(edge[1]) for edge in self.edges],
         )
 
-    def layer(self, *params):
+    def layer(self, *params: NDArray[float]) -> None:
         """
         Each layer of the VQA. Each arg from `params` is a list of parameters,
         e.g. QAOA has two: gammas and betas but XQAOA has three: gammas, betas
@@ -93,7 +95,7 @@ class VQA:
         """
         pass
 
-    def circuit(self, *params):
+    def circuit(self, *params: NDArray[float]) -> None:
         """
         Variational circuit for given parameters.
         """
@@ -105,7 +107,7 @@ class VQA:
         # Add layers
         qml.layer(self.layer, self.depth, *params)
 
-    def _cost_circuit(self, *params):
+    def _cost_circuit(self, *params: NDArray[float]):
         """
         Define `self.expval_op` in inheriting class's __init__. It is the total
         cost function, usually problem/cost Hamiltonian.
@@ -113,14 +115,14 @@ class VQA:
         self.circuit(*params)
         return qml.expval(self.expval_op)
 
-    def _probs_circuit(self, *params):
+    def _probs_circuit(self, *params: NDArray[float]):
         """
         Circuit for getting probabilities for each eigenstate.
         """
         self.circuit(*params)
         return qml.probs()
 
-    def get_probs(self, as_dict=False):
+    def get_probs(self, as_dict: bool = False) -> NDArray[int] | dict[str, float]:
         """
         Gets the probabilities for each eigenstate.
         """
@@ -135,12 +137,12 @@ class VQA:
 
     def optimize(
         self,
-        init_params=None,
-        print_it=False,
-        print_pref="",
-        print_newlines=False,
-        init_val=0.5,
-    ):
+        init_params: Optional[Sequence[NDArray[float]]] = None,
+        print_it: bool = False,
+        print_pref: str = "",
+        print_newlines: bool = False,
+        init_val: float = 0.5,
+    ) -> None:
         """
         Runs the optimization for given initial parameters. The shapes of those
         parameters should defined in a list as `self.param_shapes` in the __init__
@@ -205,15 +207,15 @@ class VQA:
 class QAOA(VQA):
     def __init__(
         self,
-        coeff,
-        depth,
-        steps,
-        shots=None,
-        prec=1e-8,
-        optimizer="adam",
-        opt_kwargs={},
-        device="default.qubit",
-        bitflip_prob=0,
+        coeff: NDArray[NDArray[float]],
+        depth: int,
+        steps: int,
+        shots: Optional[int] = None,
+        prec: float = 1e-8,
+        optimizer: str = "adam",
+        opt_kwargs: dict[str, ...] = {},
+        device: str = "default.qubit",
+        bitflip_prob: float = 0,
     ):
         super().__init__(
             coeff=coeff,
@@ -229,7 +231,7 @@ class QAOA(VQA):
 
         self.param_shapes = ((self.depth,), (self.depth,))
 
-    def layer(self, gamma, beta):
+    def layer(self, gamma: NDArray[float], beta: NDArray[float]) -> None:
         # Create Pauli rotation gates
         for edge, weight in zip(self.edges, self.weights):
             qml.PauliRot(gamma * weight, "ZZ", wires=edge)
@@ -249,15 +251,15 @@ class MAQAOA(VQA):
 
     def __init__(
         self,
-        coeff,
-        depth,
-        steps,
-        shots=None,
-        prec=1e-8,
-        optimizer="adam",
-        opt_kwargs={},
-        device="default.qubit",
-        bitflip_prob=0,
+        coeff: NDArray[NDArray[float]],
+        depth: int,
+        steps: int,
+        shots: Optional[int] = None,
+        prec: float = 1e-8,
+        optimizer: str = "adam",
+        opt_kwargs: dict[str, ...] = {},
+        device: str = "default.qubit",
+        bitflip_prob: float = 0,
     ):
         super().__init__(
             coeff=coeff,
@@ -276,7 +278,7 @@ class MAQAOA(VQA):
             (self.depth, self.N),
         )
 
-    def layer(self, gammas, betas):
+    def layer(self, gammas: NDArray[float], betas: NDArray[float]) -> None:
         # Each gate gets its own beta/gamma parameter
         for edge, weight, gamma in zip(self.edges, self.weights, gammas):
             qml.PauliRot(gamma * weight, "ZZ", wires=edge)
@@ -295,15 +297,15 @@ class XQAOA(VQA):
 
     def __init__(
         self,
-        coeff,
-        depth,
-        steps,
-        shots=None,
-        prec=1e-8,
-        optimizer="adam",
-        opt_kwargs={},
-        device="default.qubit",
-        bitflip_prob=0,
+        coeff: NDArray[NDArray[float]],
+        depth: int,
+        steps: int,
+        shots: Optional[int] = None,
+        prec: float = 1e-8,
+        optimizer: str = "adam",
+        opt_kwargs: dict[str, ...] = {},
+        device: str = "default.qubit",
+        bitflip_prob: float = 0,
     ):
         super().__init__(
             coeff=coeff,
@@ -323,7 +325,9 @@ class XQAOA(VQA):
             (self.depth, self.N),
         )
 
-    def layer(self, gammas, betas, alphas):
+    def layer(
+        self, gammas: NDArray[float], betas: NDArray[float], alphas: NDArray[float]
+    ) -> None:
         # Each gate gets its own beta/gamma parameter
         for edge, weight, gamma in zip(self.edges, self.weights, gammas):
             qml.PauliRot(gamma * weight, "ZZ", wires=edge)
@@ -349,12 +353,12 @@ class FALQON:
 
     def __init__(
         self,
-        coeff,
-        depth,
-        dt=0.08,
-        init_beta=0,
-        shots=None,
-        device="default.qubit",
+        coeff: NDArray[NDArray[float]],
+        depth: int,
+        dt: float = 0.08,
+        init_beta: float = 0,
+        shots: Optional[int] = None,
+        device: str = "default.qubit",
     ):
         self.coeff = coeff
         self.depth = depth
@@ -432,7 +436,7 @@ class FALQON:
         self.circuit(self._new_beta)
         return qml.expval(self.expval_op), qml.expval(self.commutator)
 
-    def circuit(self, beta=None):
+    def circuit(self, beta: Optional[float] = None):
         """
         Actual circuit to run.
         """
@@ -447,7 +451,7 @@ class FALQON:
             for ind in range(self.N):
                 qml.PauliRot(self.dt * beta, "X", wires=ind)
 
-    def get_probs(self, as_dict=False):
+    def get_probs(self, as_dict: bool = False) -> NDArray[float] | dict[str, float]:
         """
         Gets the probabilities for each eigenstate.
         """
@@ -457,7 +461,7 @@ class FALQON:
             return dict(zip(self.bit_strs, probs))
         return probs
 
-    def run(self, print_it=False):
+    def run(self, print_it: bool = False) -> None:
         """`
         Run the FALQON algorithm
         """
@@ -495,3 +499,228 @@ class FALQON:
 
         if print_it:
             print("\nDone!")
+
+
+class VarQITE:
+    def __init__(
+        self,
+        coeff: NDArray[NDArray[float]],
+        steps: int = 10,
+        prec: Optional[float] = None,
+        dtau: float = 0.5,
+        device: str = "default.qubit",
+    ):
+        """
+        Algorithm for Variational Quantum Imaginary Time Evolution. This
+        algorithm is described in arxiv.org/pdf/2404.16135.
+        """
+        self.coeff = coeff
+        self.steps = steps
+        self.dtau = dtau
+        self.nq = len(coeff)
+        self.prec = prec
+        self.device = qml.device(device, wires=self.nq)
+
+        # Ordered array of all possible eigenstates
+        self.bitstrings = np.array(
+            [format(bs, f"0{self.nq}b") for bs in range(2**self.nq)]
+        )
+        # Verteices of our graph
+        self.vertices = np.arange(self.nq)
+        # The edges represented by tuples of vertices
+        self.edges = np.stack(np.triu_indices(self.nq, k=1), axis=1)
+        # The weights for each edge
+        self.weights = np.array(
+            [self.coeff[edge[0], edge[1]] for edge in self.edges]
+        )
+        # # The operators of the Hamiltonian (without their weights)
+        self.ops = [qml.PauliZ(edge[0]) @ qml.PauliZ(edge[1]) for edge in self.edges]
+
+        # Expectation value operator: problem Hamiltonian
+        self.hamiltonian = qml.Hamiltonian(self.weights, self.ops)
+        self.qubit_order = self._order_qubits()
+        # Ordered tuples for ZY gates
+        self.qubit_pairs = [(q, r) for q in range(self.nq) for r in range(q)]
+        # Creates circuits to run
+        self._create_qnodes()
+
+        # Per step info to record
+        self.energies = []
+        self.op_energies = []
+        self.all_thetas = []
+        self.Gmats = []
+        self.Dvecs = []
+        self.theta_dots = []
+        self.energy_diffs = []
+        # To assign to self.old_energy for the first step
+        self.current_energy = None
+
+    def _order_qubits(self) -> NDArray[int]:
+        """
+        Returns the order of the qubits based on Eq. S7 of the paper. It's the
+        sum of the absolute value of the weights of a specific vertex with all
+        others in the graph.
+        """
+        return np.argsort(np.sum(np.abs(self.coeff), axis=1))[::-1]
+
+    def _circuit(self, thetas: NDArray[float]):
+        """
+        Builds ansatz.
+        """
+        for ind in range(self.nq):
+            qml.Hadamard(ind)
+
+        for ind, (q, r) in enumerate(self.qubit_pairs):
+            qubits = [self.qubit_order[r], self.qubit_order[q]]
+            qml.PauliRot(-2 * thetas[ind], "ZY", wires=qubits)
+
+    def circuit_op_expvals(self, thetas: NDArray[float]):
+        """
+        Circuit for expectation value of each term of Hamiltonian.
+        """
+        self._circuit(thetas=thetas)
+        return qmlnp.array([qml.expval(op) for op in self.ops])
+
+    def circuit_ham_expval(self, thetas: NDArray[float]):
+        """
+        Circuit for expectation value for full Hamiltonian.
+        """
+        self._circuit(thetas=thetas)
+        return qml.expval(self.hamiltonian)
+
+    def circuit_probs(self, thetas: NDArray[float]):
+        """
+        Circuit for probability of each eigenstate.
+        """
+        self._circuit(thetas=thetas)
+        return qml.probs()
+
+    def _create_qnodes(self) -> None:
+        """
+        Create QNodes for each circuit.
+        """
+        self.get_op_expvals = qml.QNode(
+            func=self.circuit_op_expvals, device=self.device
+        )
+        self.get_ham_expval = qml.QNode(
+            func=self.circuit_ham_expval, device=self.device
+        )
+        self._get_probs = qml.QNode(func=self.circuit_probs, device=self.device)
+
+    def get_probs(self, thetas: Optional[NDArray[float]] = None) -> dict[str, float]:
+        """
+        Gets the probabilities for each eigenstate as a dictionary
+        """
+        thetas = self.current_thetas if thetas is None else thetas
+        probs = self._get_probs(thetas=thetas)
+        return dict(zip(self.bitstrings, probs))
+
+    def find_gradient(self, thetas: NDArray[float]) -> NDArray[float]:
+        """
+        Finds theta dot via inverting finding G and D and inverting D (Eq. 6).
+        Returns the gradient for each parameter.
+        """
+        Dvec = np.empty(len(self.ops))
+        for i, Hi in enumerate(self.ops):
+            # Sum of ith column of covariance matrix, i.e. <H_i H_j>
+            cov = 0
+            for j, Hj in enumerate(self.ops):
+                if i == j:
+                    cov += self.weights[j]
+                    continue
+
+                @qml.qnode(device=self.device)
+                def get_cov_expval(thetas):
+                    self._circuit(thetas=thetas)
+                    return qml.expval(Hi @ Hj)
+
+                cov += np.real_if_close(
+                    self.weights[j] * get_cov_expval(thetas), tol=1e-10
+                )
+                if cov.imag != 0:
+                    raise Exception(f"Covariance is complex: {cov}! Fix!!")
+
+            # D[i] = -∑_j c_j⟨H_iH_j⟩ + ⟨H⟩⟨H_i⟩
+            Dvec[i] = -cov + self.current_energy * self.current_op_energies[i]
+
+        # G[i][j] = ∂(⟨H_i⟩)/∂(params[j]).
+        Gmat = qml.jacobian(self.get_op_expvals)(thetas) / 2
+        theta_dot = np.linalg.solve(Gmat, Dvec)
+
+        self.Gmats.append(Gmat)
+        self.Dvecs.append(Dvec)
+        self.theta_dots.append(theta_dot)
+        return theta_dot
+
+    def step(self, thetas: NDArray[float]) -> NDArray[float]:
+        """
+        Does single optimization step of algorithm. Returns new values for
+        parameters.
+        """
+        # expectation value of full Hamiltonian
+        self.previous_energy = self.current_energy
+        self.current_energy = self.get_ham_expval(thetas=thetas)
+        self.energies.append(self.current_energy)
+        # expectation values of each term of the Hamiltonian
+        self.current_op_energies = self.get_op_expvals(thetas=thetas)
+        self.op_energies.append(self.current_op_energies)
+
+        self.all_thetas.append(thetas)
+        theta_dots = self.find_gradient(thetas=thetas)
+
+        return thetas + self.dtau * theta_dots
+
+    def optimize(
+        self,
+        steps_till_newline: int = 10,
+        print_progress: bool = True,
+    ) -> None:
+        """
+        Runs full optimization.
+        """
+        start_time = dt.now()
+        self.current_thetas = qmlnp.ones(15) * np.pi / 2
+        for step_ind in range(self.steps):
+            step_start = dt.now()
+            self.current_thetas = self.step(self.current_thetas)
+            step_end = dt.now()
+
+            self.energy_diff = (
+                None
+                if self.previous_energy is None
+                else abs(self.current_energy - self.previous_energy)
+            )
+            if self.energy_diff is not None:
+                self.energy_diffs.append(self.energy_diff)
+
+            if print_progress:
+                end = "\r" if (step_ind + 1) % steps_till_newline else "\n"
+                step_str = (
+                    f"Step time: {(step_end - step_start).total_seconds():.3f}"
+                )
+                total_str = (
+                    f"Total time: {(step_end - start_time).total_seconds():.3f}"
+                )
+                diff_str = (
+                    f"ΔE = {self.energy_diff:.3e}"
+                    if self.energy_diff is not None
+                    else ""
+                )
+                print(
+                    f"Step: {step_ind + 1:>{len(str(self.steps))}} / {self.steps}"
+                    f" | {step_str} | {total_str} | {diff_str}",
+                    end=end,
+                )
+
+            if self.prec is not None and self.energy_diff is not None:
+                if self.energy_diff < self.prec:
+                    break
+
+        self.total_steps = step_ind + 1
+        self.energies = np.array(self.energies)
+        self.op_energies = np.array(self.op_energies)
+        self.all_thetas = np.array(self.all_thetas)
+        self.Gmats = np.array(self.Gmats)
+        self.Dvecs = np.array(self.Dvecs)
+        self.theta_dots = np.array(self.theta_dots)
+        self.energy_diffs = np.array(self.energy_diffs)
