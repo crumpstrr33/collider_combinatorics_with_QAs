@@ -129,8 +129,6 @@ def verify_data(
         max_ind = np.max(ind_pairs)
         # Check to make sure do we do indeed have maximum number of events
         if max_ind != num_evts:
-            print(type(max_ind), max_ind)
-            print(type(num_evts), num_evts)
             print(
                 f"{invm:.2f} -- "
                 "Do not have maximum number of events. Max number from event "
