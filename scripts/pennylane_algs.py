@@ -1,13 +1,12 @@
 from datetime import datetime as dt
 from itertools import combinations, product
-from math import sqrt
+from math import comb, sqrt
 from typing import Optional, Sequence
 
 import numpy as np
 import pennylane as qml
 from numpy.typing import NDArray
 from pennylane import numpy as qmlnp
-from scipy.special import comb
 
 
 class VQA:
@@ -505,8 +504,10 @@ class VarQITE:
     def __init__(
         self,
         coeff: NDArray[NDArray[float]],
+        depth: int = 1,
         steps: int = 10,
-        prec: Optional[float] = None,
+        shots: Optional[int] = None,
+        prec: float = 1e-5,
         dtau: float = 0.5,
         device: str = "default.qubit",
     ):
@@ -515,6 +516,7 @@ class VarQITE:
         algorithm is described in arxiv.org/pdf/2404.16135.
         """
         self.coeff = coeff
+        self.depth = depth  # doesn't do anything atm
         self.steps = steps
         self.dtau = dtau
         self.nq = len(coeff)
@@ -666,9 +668,10 @@ class VarQITE:
         self.op_energies.append(self.current_op_energies)
 
         self.all_thetas.append(thetas)
-        theta_dots = self.find_gradient(thetas=thetas)
+        # Modulo the angle FOR NOW, sometimes value is really large...
+        theta_dots = self.find_gradient(thetas=thetas) % (2 * np.pi)
 
-        return thetas + self.dtau * theta_dots
+        return (thetas + self.dtau * theta_dots) % (2 * np.pi)
 
     def optimize(
         self,
@@ -679,7 +682,7 @@ class VarQITE:
         Runs full optimization.
         """
         start_time = dt.now()
-        self.current_thetas = qmlnp.ones(15) * np.pi / 2
+        self.current_thetas = qmlnp.ones(comb(self.nq, 2)) * np.pi
         for step_ind in range(self.steps):
             step_start = dt.now()
             self.current_thetas = self.step(self.current_thetas)
@@ -702,7 +705,7 @@ class VarQITE:
                     f"Total time: {(step_end - start_time).total_seconds():.3f}"
                 )
                 diff_str = (
-                    f"ΔE = {self.energy_diff:.3e}"
+                    f"ΔE = {self.energy_diff / abs(self.current_energy):.3e}"
                     if self.energy_diff is not None
                     else ""
                 )
@@ -713,7 +716,7 @@ class VarQITE:
                 )
 
             if self.prec is not None and self.energy_diff is not None:
-                if self.energy_diff < self.prec:
+                if self.energy_diff / abs(self.current_energy) < self.prec:
                     break
 
         self.total_steps = step_ind + 1

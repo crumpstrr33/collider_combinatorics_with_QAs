@@ -19,7 +19,7 @@ from .constants import (
 from .data import split_data
 from .events import get_data
 from .hamiltonians import get_coefficients, get_minimum_energies, swap
-from .pennylane_algs import FALQON, MAQAOA, QAOA, XQAOA
+from .pennylane_algs import FALQON, MAQAOA, QAOA, XQAOA, VarQITE
 
 
 class JobRunner:
@@ -71,6 +71,8 @@ class JobRunner:
                 )
             case "falqon":
                 self.param_shapes = (self.depth,)
+            case "varqite":
+                self.param_shapes = ((int(comb(self.num_fsp, 2)),),)
 
         # Total number of events
         self.N = self.ind_hi - self.ind_lo
@@ -85,7 +87,11 @@ class JobRunner:
         make_symmetric - If True, will combine the probabilities of symmetric
             bit strings, e.g. "010" and "101".
         """
-        probs = self.alg.get_probs(as_dict=True)
+        match self.alg_str.lower():
+            case "varqite":
+                probs = self.alg.get_probs()
+            case _:
+                probs = self.alg.get_probs(as_dict=True)
         if make_symmetric:
             probs = {
                 k: v + probs[swap(k)]
@@ -138,6 +144,8 @@ class JobRunner:
                 Alg = XQAOA
             case "falqon":
                 Alg = FALQON
+            case "varqite":
+                Alg = VarQITE
 
         self.alg = Alg(
             coeff=coeff, depth=self.depth, device=self.device, **self.alg_kwargs
@@ -146,6 +154,8 @@ class JobRunner:
         match self.alg_str:
             case "falqon":
                 self.alg.run(print_it=False)
+            case "varqite":
+                self.alg.optimize(print_progress=False)
             case _:
                 self.alg.optimize(print_it=False)
 
@@ -216,9 +226,6 @@ class JobRunner:
             probs_arr = np.empty((N_evts, 2**num_fsp))
             sym_probs_arr = np.empty((N_evts, 2 ** (num_fsp - 1)))
             costs_arr = np.empty((N_evts, self.steps))
-            params_arr = [
-                np.empty((N_evts, *param_shape)) for param_shape in self.param_shapes
-            ]
             expval_arr = np.empty(N_evts)
             evals_arr = np.empty(N_evts)
             rank_arr = np.empty(N_evts)
@@ -227,6 +234,9 @@ class JobRunner:
             sym_prob_arr = np.empty(N_evts)
             min_bitstring_arr = np.empty(N_evts)
             min_energy_arr = np.empty(N_evts)
+            params_arr = [
+                np.empty((N_evts, *param_shape)) for param_shape in self.param_shapes
+            ]
 
             # Loop over individual events
             for ind, (coeff, minimum) in enumerate(zip(coeffs, minimums)):
@@ -243,18 +253,28 @@ class JobRunner:
                 tot_time = (dt.now() - t0).total_seconds()
 
                 # Gather the data
-                probs = self.alg.get_probs(as_dict=True)
+                match self.alg_str.lower():
+                    case "varqite":
+                        probs = self.alg.get_probs()
+                        costs = self.alg.energies
+                        evals = self.alg.total_steps
+                    case _:
+                        probs = self.alg.get_probs(as_dict=True)
+                        costs = self.alg.costs.numpy()
+                        evals = self.alg.evals
                 sym_probs = {
                     k: v + probs[swap(k)]
                     for k, v in probs.items()
                     if k.startswith(self.soln_bitstring[0])
                 }
-                costs = self.alg.costs.numpy()
-                params = [param.numpy() for param in self.alg.params]
                 expval = costs[-1]
-                evals = self.alg.evals
                 rank, prob = self.find_rank_and_prob(make_symmetric=False)
                 sym_rank, sym_prob = self.find_rank_and_prob(make_symmetric=True)
+                match self.alg_str.lower():
+                    case "varqite":
+                        params = [self.alg.current_thetas]
+                    case _:
+                        params = [param.numpy() for param in self.alg.params]
 
                 print(
                     f"| {self.alg_str.upper()} time: {tot_time:.2f} "
@@ -297,6 +317,8 @@ class JobRunner:
                     }
                 case "falqon":
                     params_dict = {"betas": params_arr[0]}
+                case "varqite":
+                    params_dict = {"thetas": params_arr[0]}
 
             # Save all the info
             pad = len(str(self.tot_evts))
@@ -359,10 +381,10 @@ def run_jobs(
     norm_scheme: str,
     device: str,
     steps: int,
-    lambda_nume: tuple[str, str],
-    lambda_denom: tuple[str, str],
-    shots: Optional[int],
     evts_per_invm: int,
+    lambda_nume: Optional[tuple[str, str]] = None,
+    lambda_denom: Optional[tuple[str, str]] = None,
+    shots: Optional[int] = None,
 ):
     """
     Wrapper function for the JobRunner class. Essentially will run an algorithm
@@ -385,14 +407,14 @@ def run_jobs(
         be "max", "mean", or "sum".
     device - The Pennylane device to use, e.g. "default.qubit".
     steps - The number of classical optimization steps for the VQA to take
-    lambda_nume - The numerator of the lambda coefficient used in
-        the H2 Hamiltonian.
-    lambda_denom - The denominator of the lambda coefficient used
-        in the H2 Hamiltonian.
-    shots - The number of shots to do each circuit run. If None, use infinite
-        shots, the ideal case.
     evts_per_invm - Number of events per invariant mass bin. Added to name of
         data directory so that verifying the data can proceed correctly.
+    lambda_nume (default None) - The numerator of the lambda coefficient used in
+        the H2 Hamiltonian.
+    lambda_denom (default None) - The denominator of the lambda coefficient used
+        in the H2 Hamiltonian.
+    shots (default None)- The number of shots to do each circuit run. If None,
+        use infinite shots, the ideal case.
     """
     # Make sure order of lims is enforced
     if not ind_lo < ind_hi:
@@ -434,7 +456,13 @@ def run_jobs(
     os.makedirs(root_dir, exist_ok=True)
 
     # Stuff that differs between QAOA and FALQON
-    alg_kwargs = {"shots": shots, "steps": steps, "optimizer": "adam"}
+    match alg.lower():
+        case "varqite":
+            alg_kwargs = {"shots": shots, "steps": steps, "dtau": 0.5, "prec": 1e-5}
+        case "falqon":
+            raise Exception("Aren't doing FALQON again yet...")
+        case _:
+            alg_kwargs = {"shots": shots, "steps": steps, "optimizer": "adam"}
     # Run it!
     job_runner = JobRunner(
         etype=etype,
