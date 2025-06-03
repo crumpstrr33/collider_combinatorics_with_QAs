@@ -652,7 +652,9 @@ class VarQITE:
         if mat_rank < dim:
             raise np.linalg.LinAlgError(
                 f"Matrix is singular (dim = {dim}, rank = {mat_rank}):\n{Gmat}\n"
-                f"The vector was\n{Dvec}"
+                f"The vector was\n{Dvec}\n"
+                f"Coefficient was\n{self.coeff}\n"
+                f"Current step: {self.step_ind}"
             )
 
         theta_dot = np.linalg.solve(Gmat, Dvec)
@@ -691,7 +693,7 @@ class VarQITE:
         """
         start_time = dt.now()
         self.current_thetas = qmlnp.ones(comb(self.nq, 2)) * np.pi
-        for step_ind in range(self.steps):
+        for self.step_ind in range(self.steps):
             step_start = dt.now()
             self.current_thetas = self.step(self.current_thetas)
             step_end = dt.now()
@@ -705,7 +707,7 @@ class VarQITE:
                 self.energy_diffs.append(self.energy_diff)
 
             if print_progress:
-                end = "\r" if (step_ind + 1) % steps_till_newline else "\n"
+                end = "\r" if (self.step_ind + 1) % steps_till_newline else "\n"
                 step_str = (
                     f"Step time: {(step_end - step_start).total_seconds():.3f}"
                 )
@@ -718,7 +720,7 @@ class VarQITE:
                     else ""
                 )
                 print(
-                    f"Step: {step_ind + 1:>{len(str(self.steps))}} / {self.steps}"
+                    f"Step: {self.step_ind + 1:>{len(str(self.steps))}} / {self.steps}"
                     f" | {step_str} | {total_str} | {diff_str}",
                     end=end,
                 )
@@ -727,7 +729,7 @@ class VarQITE:
                 if self.energy_diff / abs(self.current_energy) < self.prec:
                     break
 
-        self.total_steps = step_ind + 1
+        self.total_steps = self.step_ind + 1
         self.energies = np.array(self.energies)
         self.op_energies = np.array(self.op_energies)
         self.all_thetas = np.array(self.all_thetas)
