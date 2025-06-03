@@ -677,7 +677,7 @@ class VarQITE:
 
         self.all_thetas.append(thetas)
         # Modulo the angle FOR NOW, sometimes value is really large...
-        theta_dots = self.find_gradient(thetas=thetas) % (2 * np.pi)
+        theta_dots = self.find_gradient(thetas=thetas)
 
         return (thetas + self.dtau * theta_dots) % (2 * np.pi)
 
