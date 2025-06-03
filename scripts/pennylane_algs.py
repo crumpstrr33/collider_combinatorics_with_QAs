@@ -647,17 +647,9 @@ class VarQITE:
 
         # G[i][j] = ∂(⟨H_i⟩)/∂(params[j]).
         Gmat = qml.jacobian(self.get_op_expvals)(thetas) / 2
-        # Check if G is singular
-        mat_rank, dim = np.linalg.matrix_rank(Gmat), Gmat.shape[0]
-        if mat_rank < dim:
-            raise np.linalg.LinAlgError(
-                f"Matrix is singular (dim = {dim}, rank = {mat_rank}):\n{Gmat}\n"
-                f"The vector was\n{Dvec}\n"
-                f"Coefficient was\n{self.coeff}\n"
-                f"Current step: {self.step_ind}"
-            )
-
-        theta_dot = np.linalg.solve(Gmat, Dvec)
+        # Calculate theta dot via SVD
+        max_sv = np.linalg.svd(Gmat, compute_uv=False).max()
+        theta_dot = np.linalg.lstsq(Gmat, Dvec, rcond=max_sv / 100)[0]
 
         self.Gmats.append(Gmat)
         self.Dvecs.append(Dvec)
