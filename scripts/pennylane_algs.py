@@ -651,7 +651,7 @@ class VarQITE:
         mat_rank, dim = np.linalg.matrix_rank(Gmat), Gmat.shape[0]
         if mat_rank < dim:
             raise np.linalg.LinAlgError(
-                f"Matrix is singular (dim = {dim}, rank = {mat_rank}):\n{G}\n"
+                f"Matrix is singular (dim = {dim}, rank = {mat_rank}):\n{Gmat}\n"
                 f"The vector was\n{Dvec}"
             )
 
