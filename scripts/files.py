@@ -114,6 +114,10 @@ def verify_data(
     # Loop over the invariant mass subdirectories
     for invm in INVMS[:-1]:
         invm_dir = root_dir / f"{invm:.2f}"
+        print(invm_dir.exists())
+        if not invm_dir.exists():
+            print(f"{invm:.2f} -- Invariant mass file {invm_dir} does not exist.")
+            return False
 
         ind_pairs = []
         # Iterate over each .npz file
@@ -156,7 +160,7 @@ def verify_data(
         if len(all_inds):
             print(f"{invm:.2f} -- Missing {len(all_inds)} events: {all_inds}")
             return False
-        return True
+    return True
 
 
 def load_data(
