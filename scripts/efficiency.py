@@ -242,7 +242,7 @@ class JobRunner:
             for ind, (coeff, minimum) in enumerate(zip(coeffs, minimums)):
                 print(
                     f"Index: {ind + 1:>{len(str(self.N))}} / {self.N} "
-                    + f"(p = {self.depth}) | norm inv mass = {invm:.2f} "
+                    + f"(p = {self.depth}) | norm inv mass = {self.invms[invm_ind][ind]:.2f} "
                     + f" | Event: {self.ind_lo + ind}",
                     end=" ",
                     flush=True,
