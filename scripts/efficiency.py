@@ -246,6 +246,8 @@ class JobRunner:
             params_arr = [
                 np.empty((N_evts, *param_shape)) for param_shape in self.param_shapes
             ]
+            if self.alg_str == "falqon":
+                depth_probs_arr = np.empty((N_evts, self.depth, 2**num_fsp))
 
             # Loop over individual events
             for ind, (coeff, minimum) in enumerate(zip(coeffs, minimums)):
@@ -307,6 +309,8 @@ class JobRunner:
                 sym_prob_arr[ind] = sym_prob
                 min_bitstring_arr[ind] = minimum[0]
                 min_energy_arr[ind] = minimum[1]
+                if self.alg_str == "falqon":
+                    depth_probs_arr[ind] = self.alg.depth_probs
 
             # Create save directory
             invm_dir = self.root_dir / f"{invm:.2f}"
@@ -316,20 +320,23 @@ class JobRunner:
             # Save params based on actual names which is algorithm-specific
             match self.alg_str:
                 case "qaoa" | "maqaoa":
-                    params_dict = {
+                    extras_dict = {
                         "gammas": params_arr[0],
                         "betas": params_arr[1],
                     }
                 case "xqaoa":
-                    params_dict = {
+                    extras_dict = {
                         "gammas": params_arr[0],
                         "betas": params_arr[1],
                         "alphas": params_arr[2],
                     }
                 case "falqon":
-                    params_dict = {"betas": params_arr[0]}
+                    extras_dict = {
+                        "betas": params_arr[0],
+                        "depth_probs": depth_probs_arr,
+                    }
                 case "varqite":
-                    params_dict = {"thetas": params_arr[0]}
+                    extras_dict = {"thetas": params_arr[0]}
 
             # Save all the info
             pad = len(str(self.tot_evts))
@@ -353,7 +360,7 @@ class JobRunner:
                 sym_rank_probs=sym_prob_arr,
                 min_bitstrings=min_bitstring_arr,
                 min_energies=min_energy_arr,
-                **params_dict,
+                **extras_dict,
             )
             print()
 
