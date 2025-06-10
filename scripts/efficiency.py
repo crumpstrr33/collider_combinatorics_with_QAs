@@ -9,6 +9,8 @@ from numpy.typing import NDArray
 from scipy.special import comb
 
 from .constants import (
+    DEFAULT_BETA0,
+    DEFAULT_DT,
     INVMS,
     LAMBDA_OPERS,
     LAMBDA_VALS,
@@ -48,7 +50,11 @@ class JobRunner:
         self.norm_scheme = norm_scheme
         self.device = device
         self.root_dir = root_dir
-        self.steps = alg_kwargs["steps"]
+        match self.alg_str:
+            case "falqon":
+                self.steps = self.depth
+            case _:
+                self.steps = alg_kwargs["steps"]
         self.alg_kwargs = alg_kwargs
         self.lambda_kwargs = lambda_kwargs
 
@@ -70,9 +76,12 @@ class JobRunner:
                     (self.depth, self.num_fsp),
                 )
             case "falqon":
-                self.param_shapes = (self.depth,)
+                self.param_shapes = ((self.depth,),)
             case "varqite":
+                # This assume p=1 for VarQITE always
                 self.param_shapes = ((int(comb(self.num_fsp, 2)),),)
+            case _:
+                raise Exception(f"Unknown algorithm {self.alg_str}")
 
         # Total number of events
         self.N = self.ind_hi - self.ind_lo
@@ -273,6 +282,8 @@ class JobRunner:
                 match self.alg_str.lower():
                     case "varqite":
                         params = [self.alg.current_thetas]
+                    case "falqon":
+                        params = self.alg.params
                     case _:
                         params = [param.numpy() for param in self.alg.params]
 
@@ -416,6 +427,10 @@ def run_jobs(
     shots (default None)- The number of shots to do each circuit run. If None,
         use infinite shots, the ideal case.
     """
+    if steps is None and alg.lower() != "falqon":
+        raise Exception(
+            f"`steps` can only be `None` if algorithm is FALQON but it is {alg}."
+        )
     # Make sure order of lims is enforced
     if not ind_lo < ind_hi:
         raise Exception(
@@ -438,8 +453,6 @@ def run_jobs(
     # Temporary stops
     if shots is not None:
         raise Exception("Finite shot functionality has been removed! (for now)")
-    if alg.lower() == "falqon":
-        raise Exception("FALQON doesn't work! (yet)")
 
     # Make a more specific string if we need to specify the lambda coefficient
     ham_str = hamiltonian
@@ -460,7 +473,7 @@ def run_jobs(
         case "varqite":
             alg_kwargs = {"shots": shots, "steps": steps, "dtau": 0.5, "prec": 1e-5}
         case "falqon":
-            raise Exception("Aren't doing FALQON again yet...")
+            alg_kwargs = {"dt": DEFAULT_DT, "init_beta": DEFAULT_BETA0}
         case _:
             alg_kwargs = {"shots": shots, "steps": steps, "optimizer": "adam"}
     # Run it!
