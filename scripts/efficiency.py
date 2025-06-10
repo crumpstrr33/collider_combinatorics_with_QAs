@@ -61,7 +61,7 @@ class JobRunner:
         # Info on the shape of the params for each alg, used for creating
         # the numpy arrays that saves them.
         self.num_fsp = NUM_FSP_DICT[self.etype]
-        match self.alg_str.lower():
+        match self.alg_str:
             case "qaoa":
                 self.param_shapes = ((self.depth,), (self.depth,))
             case "maqaoa":
@@ -96,7 +96,7 @@ class JobRunner:
         make_symmetric - If True, will combine the probabilities of symmetric
             bit strings, e.g. "010" and "101".
         """
-        match self.alg_str.lower():
+        match self.alg_str:
             case "varqite":
                 probs = self.alg.get_probs()
             case _:
@@ -262,7 +262,7 @@ class JobRunner:
                 tot_time = (dt.now() - t0).total_seconds()
 
                 # Gather the data
-                match self.alg_str.lower():
+                match self.alg_str:
                     case "varqite":
                         probs = self.alg.get_probs()
                         costs = self.alg.energies
@@ -279,7 +279,7 @@ class JobRunner:
                 expval = costs[-1]
                 rank, prob = self.find_rank_and_prob(make_symmetric=False)
                 sym_rank, sym_prob = self.find_rank_and_prob(make_symmetric=True)
-                match self.alg_str.lower():
+                match self.alg_str:
                     case "varqite":
                         params = [self.alg.current_thetas]
                     case "falqon":
@@ -314,7 +314,7 @@ class JobRunner:
             os.makedirs(invm_dir, exist_ok=True)
 
             # Save params based on actual names which is algorithm-specific
-            match self.alg_str.lower():
+            match self.alg_str:
                 case "qaoa" | "maqaoa":
                     params_dict = {
                         "gammas": params_arr[0],
