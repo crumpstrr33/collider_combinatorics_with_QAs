@@ -435,12 +435,12 @@ class FALQON:
         self.circuit(self._new_beta)
         return qml.expval(self.expval_op), qml.expval(self.commutator)
 
-    def circuit(self, beta: Optional[float] = None):
+    def circuit(self, beta: Optional[float] = None) -> None:
         """
         Actual circuit to run.
         """
         # For an n layer circuit, initialize the first n-1 layers
-        qml.QubitStateVector(self._cur_state, wires=range(self.N))
+        qml.StatePrep(self._cur_state, wires=range(self.N))
 
         # If you just want to run the circuit as is (without adding another layer)
         if beta is not None:
@@ -460,7 +460,7 @@ class FALQON:
             return dict(zip(self.bit_strs, probs))
         return probs
 
-    def run(self, print_it: bool = False) -> None:
+    def run(self, print_it: bool = False, save_every_N: int = 10) -> None:
         """`
         Run the FALQON algorithm
         """
@@ -477,8 +477,6 @@ class FALQON:
                     end="\r",
                 )
 
-            # Save value of parameter
-            self.betas.append(self._new_beta)
             # Get the current cost and new parameter values
             param_qnode = qml.QNode(self._param_circuit, self.device)
             cost, beta = param_qnode()
@@ -486,8 +484,12 @@ class FALQON:
             state_qnode = qml.QNode(self._state_circuit, self.device)
 
             self.costs[ind] = cost
-            # Save the probabilities for each depth
-            self.depth_probs.append(self.get_probs(True))
+            # Save every Nth step
+            if not (ind + 1) % save_every_N:
+                # Save probabilities for each eigenstate
+                self.depth_probs.append(self.get_probs(as_dict=False))
+                # Save value of parameter
+                self.betas.append(self._new_beta)
             # Save state and parameter for next layer
             self._cur_state = state_qnode()
             self._new_beta = -beta
