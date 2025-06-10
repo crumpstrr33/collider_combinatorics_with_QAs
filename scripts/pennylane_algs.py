@@ -460,7 +460,7 @@ class FALQON:
             return dict(zip(self.bit_strs, probs))
         return probs
 
-    def run(self, print_it: bool = False, save_every_N: int = 10) -> None:
+    def run(self, print_it: bool = False) -> None:
         """`
         Run the FALQON algorithm
         """
@@ -484,12 +484,10 @@ class FALQON:
             state_qnode = qml.QNode(self._state_circuit, self.device)
 
             self.costs[ind] = cost
-            # Save every Nth step
-            if not (ind + 1) % save_every_N:
-                # Save probabilities for each eigenstate
-                self.depth_probs.append(self.get_probs(as_dict=False))
-                # Save value of parameter
-                self.betas.append(self._new_beta)
+            # Save probabilities for each eigenstate
+            self.depth_probs.append(self.get_probs(as_dict=False))
+            # Save value of parameter
+            self.betas.append(self._new_beta)
             # Save state and parameter for next layer
             self._cur_state = state_qnode()
             self._new_beta = -beta
@@ -497,6 +495,7 @@ class FALQON:
         self.betas = np.array(self.betas)
         # To put in same format as with the parameters for other algorithms
         self.params = [self.betas]
+        self.depth_probs = np.array(self.depth_probs)
 
         if print_it:
             print("\nDone!")
@@ -524,6 +523,13 @@ class VarQITE:
         self.nq = len(coeff)
         self.prec = prec
         self.device = qml.device(device, wires=self.nq)
+
+        if self.depth != 1:
+            raise Exception(
+                "Doesn't support a depth different than one because I'll have "
+                "to change other files too, e.g. JobRunner and that isn't a "
+                "priority at this momen."
+            )
 
         # Ordered array of all possible eigenstates
         self.bitstrings = np.array(
