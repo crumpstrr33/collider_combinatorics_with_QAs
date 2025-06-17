@@ -1,7 +1,9 @@
+from typing import Union
+
 import numpy as np
 from numpy.typing import NDArray
 
-from .constants import INVMS
+from .constants import INVMS, METRIC
 from .events import get_invms
 from .type_hints import evts_type
 
@@ -28,7 +30,23 @@ def split_data(
 
     # Sanity check, each element should be same size
     if len(set([len(split) for split in split_evts])) != 1:
-        raise Exception(
-            "Length of each invariant mass split should be the same"
-        )
+        raise Exception("Length of each invariant mass split should be the same")
     return np.array(split_evts), np.array(split_inds)
+
+
+def get_bitstring_invms(
+    evts: evts_type, bitstring: Union[str, NDArray[str]]
+) -> NDArray[NDArray[float]]:
+    """
+    Gets the invariant masses for each event based on the bitstring. Returns the
+    invariant mass pair per event.
+    """
+    # Sum component-wise the 4-momenta of the same bitstring value
+    summed_p4s_0 = evts[:, [x == "0" for x in bitstring]].sum(axis=1)
+    summed_p4s_1 = evts[:, [x == "1" for x in bitstring]].sum(axis=1)
+
+    # Find m^2 = p^2 and take square root
+    invms_0 = np.sqrt(np.einsum("ij, ij -> i", summed_p4s_0, METRIC * summed_p4s_0))
+    invms_1 = np.sqrt(np.einsum("ij, ij -> i", summed_p4s_1, METRIC * summed_p4s_1))
+
+    return np.stack((invms_0, invms_1)).T
