@@ -76,9 +76,7 @@ class VQA:
         )
         self.vertices = np.arange(self.N)
         self.edges = np.array(list(combinations(range(self.N), r=2)))
-        self.weights = np.array(
-            [self.coeff[edge[0], edge[1]] for edge in self.edges]
-        )
+        self.weights = np.array([self.coeff[edge[0], edge[1]] for edge in self.edges])
 
         # Expectation value operator: problem Hamiltonian
         self.expval_op = qml.Hamiltonian(
@@ -121,12 +119,16 @@ class VQA:
         self.circuit(*params)
         return qml.probs()
 
-    def get_probs(self, as_dict: bool = False) -> NDArray[int] | dict[str, float]:
+    def get_probs(
+        self, as_dict: bool = False, params: Optional[list[NDArray[float]]] = None
+    ) -> NDArray[int] | dict[str, float]:
         """
-        Gets the probabilities for each eigenstate.
+        Gets the probabilities for each eigenstate. Pass your own parameters to
+        run the circuit with those specific parameters.
         """
         probs_qnode = qml.QNode(self._probs_circuit, self.device)
-        probs = probs_qnode(*self.params)
+        params = self.params if params is None else params
+        probs = probs_qnode(*params)
         if not isinstance(probs, np.ndarray):
             probs = probs.numpy()
 
@@ -148,9 +150,7 @@ class VQA:
         """
         self.params = init_params
         if self.params is None:
-            self.params = [
-                init_val * qmlnp.ones(shape) for shape in self.param_shapes
-            ]
+            self.params = [init_val * qmlnp.ones(shape) for shape in self.param_shapes]
 
         # Make sure the shapes are correct
         for ind, shape in enumerate(self.param_shapes):
@@ -373,9 +373,7 @@ class FALQON:
         )
         self.vertices = np.arange(self.N)
         self.edges = np.array(list(combinations(range(self.N), r=2)))
-        self.weights = np.array(
-            [self.coeff[edge[0], edge[1]] for edge in self.edges]
-        )
+        self.weights = np.array([self.coeff[edge[0], edge[1]] for edge in self.edges])
 
         # FALQON-specific parameters
         self.dt = dt
@@ -540,9 +538,7 @@ class VarQITE:
         # The edges represented by tuples of vertices
         self.edges = np.stack(np.triu_indices(self.nq, k=1), axis=1)
         # The weights for each edge
-        self.weights = np.array(
-            [self.coeff[edge[0], edge[1]] for edge in self.edges]
-        )
+        self.weights = np.array([self.coeff[edge[0], edge[1]] for edge in self.edges])
         # # The operators of the Hamiltonian (without their weights)
         self.ops = [qml.PauliZ(edge[0]) @ qml.PauliZ(edge[1]) for edge in self.edges]
 
@@ -708,12 +704,8 @@ class VarQITE:
 
             if print_progress:
                 end = "\r" if (self.step_ind + 1) % steps_till_newline else "\n"
-                step_str = (
-                    f"Step time: {(step_end - step_start).total_seconds():.3f}"
-                )
-                total_str = (
-                    f"Total time: {(step_end - start_time).total_seconds():.3f}"
-                )
+                step_str = f"Step time: {(step_end - step_start).total_seconds():.3f}"
+                total_str = f"Total time: {(step_end - start_time).total_seconds():.3f}"
                 diff_str = (
                     f"ΔE = {self.energy_diff / abs(self.current_energy):.3e}"
                     if self.energy_diff is not None
