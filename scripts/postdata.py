@@ -178,3 +178,24 @@ def get_2dhist_invms(
     if by_invm_bin:
         return invms
     return invms.reshape(-1, 2)
+
+
+def get_bitstrings(datum: datum_type) -> NDArray[str]:
+    """
+    For the given run, returns the bitstring chosen with the highest probability
+    by the algorithm for each event.
+
+    Parameters:
+    datum - The data for this run as created by the `JobRunner` class and saved
+        as an .npz file.
+    """
+    N = datum[1.00]["invm_p4s"].shape[1]
+
+    bitstrings = []
+    for invm in INVMS[:-1]:
+        # Convert from decimal to binary
+        bitstrings.append(
+            [format(val, f"0{N}b") for val in np.argmax(datum[invm]["probs"], axis=1)]
+        )
+
+    return np.array(bitstrings)
