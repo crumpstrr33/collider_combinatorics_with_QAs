@@ -61,15 +61,21 @@ def create_falqon_depth(
 
 
 def find_efficiency(
-    data: NDArray[datum_type], assume_symmetric: bool = True
+    data: NDArray[datum_type],
+    find_correct: bool = True,
+    assume_symmetric: bool = True,
 ) -> NDArray[NDArray[float]]:
     """
     From the given data arrays, finds the efficiency. That is, it finds the
-    fraction of events for which the algorithm found the "correct" bitstring.
+    fraction of events for which the algorithm found the "correct" bitstring
+    with the largest probability.
 
     Parameters:
     data - An array of data for runs as created by the `JobRunner` class and
         saved as an .npz file.
+    find_correct (default True) - If True, the "correct" bitstring is the one
+        that solves the problem, in our case it is "000111". If False, the
+        "correct" bitstring is the one that minimizing the Hamiltonian.
     assume_symmetric (default True) - If True, it will assume that symmetric
         bitstrings are equivalent. So a rank of 1 would be equivalent to a rank
         of 0 and so on.
@@ -80,13 +86,25 @@ def find_efficiency(
         datum_effs = []
         # Iterate for each invariant mass bin
         for invm in INVMS[:-1]:
-            ranks = datum[invm]["ranks"]
-
             # Calculate the efficiency with possibility of symmetry
-            datum_effs.append(
-                np.sum((ranks - (ranks % (2 if assume_symmetric else 1))) == 0)
-                / len(ranks)
-            )
+            if find_correct:
+                # i.e solves the combinatorial problem, that is gives "000111"
+                ranks = datum[invm]["ranks"]
+                eff = np.sum(
+                    (ranks - (ranks % (2 if assume_symmetric else 1))) == 0
+                ) / len(ranks)
+            else:
+                # i.e. found the minimum energy bitstring
+                # For some reason, the `min_bistrings` are saved as ints? I
+                # don't know why and it's too late to change it, so we need to
+                # turn them back into bitstrings by padding the ints with 0s
+                min_bitstrings = [
+                    f"{int(bs):0>6}" for bs in datum[invm]["min_bitstrings"]
+                ]
+                alg_bitstrings = get_bitstrings(datum=datum)[INVMS.index(invm)]
+                eff = np.sum(min_bitstrings == alg_bitstrings) / len(min_bitstrings)
+
+            datum_effs.append(eff)
         effs.append(datum_effs)
 
     return np.array(effs)
@@ -143,7 +161,9 @@ def int_to_bin(
     dtype (default "bits") - The type of numpy array, either bits or strings
     """
     dtype = {"bits": "S", "str": "U"}[dtype]
-    return np.array([str(format(int(x), f"0{N}b")) for x in arr], dtype=f"{dtype}{N}")
+    return np.array(
+        [str(format(int(x), f"0{N}b")) for x in arr], dtype=f"{dtype}{N}"
+    )
 
 
 def get_2dhist_invms(
@@ -195,7 +215,10 @@ def get_bitstrings(datum: datum_type) -> NDArray[str]:
     for invm in INVMS[:-1]:
         # Convert from decimal to binary
         bitstrings.append(
-            [format(val, f"0{N}b") for val in np.argmax(datum[invm]["probs"], axis=1)]
+            [
+                format(val, f"0{N}b")
+                for val in np.argmax(datum[invm]["probs"], axis=1)
+            ]
         )
 
     return np.array(bitstrings)
