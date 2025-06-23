@@ -21,6 +21,7 @@ def get_lambdas(
     evts: evts_type,
     nume: Optional[Sequence[str]] = None,  # ["min", "Jij"],
     denom: Optional[Sequence[str]] = None,  # ["max", "Pij"],
+    scale: float = 1.0,
 ) -> NDArray[np.float64]:
     """
     Finds the lambda coefficient for events. This is most commonly used in the
@@ -56,7 +57,7 @@ def get_lambdas(
     numerator = arg_dict[nume[0]](val_dict[nume[1]], axis=(1, 2))
     denominator = arg_dict[denom[0]](val_dict[denom[1]], axis=(1, 2))
 
-    return numerator / denominator
+    return scale * numerator / denominator
 
 
 def get_coefficients(
