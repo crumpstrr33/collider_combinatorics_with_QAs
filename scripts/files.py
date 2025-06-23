@@ -38,9 +38,7 @@ def parse_data() -> NDArray[NDArray[str]]:
             ) = re.findall(re_dir, param_dir.name)[0]
 
             if hamiltonian == "H2" and (lambda_nume == "" or lambda_denom == ""):
-                raise Exception(
-                    "Hamiltonian is H2, both lambda kwargs must be defined"
-                )
+                raise Exception("Hamiltonian is H2, both lambda kwargs must be defined")
 
             params.append(
                 [
@@ -107,9 +105,7 @@ def verify_data(
     ham_str = hamiltonian
     if hamiltonian == "H2":
         ham_str += f"-{lambda_nume}-{lambda_denom}"
-    root_dir = (
-        OUTPUT_DIR / alg / f"{etype}_{dtype}_{depth}_{ham_str}_{norm}_{num_evts}"
-    )
+    root_dir = OUTPUT_DIR / alg / f"{etype}_{dtype}_{depth}_{ham_str}_{norm}_{num_evts}"
 
     # Loop over the invariant mass subdirectories
     for invm in INVMS[:-1]:
@@ -203,9 +199,7 @@ def load_data(
     ham_str = hamiltonian
     if hamiltonian == "H2":
         ham_str += f"-{lambda_nume}-{lambda_denom}"
-    root_dir = (
-        OUTPUT_DIR / alg / f"{etype}_{dtype}_{depth}_{ham_str}_{norm}_{num_evts}"
-    )
+    root_dir = OUTPUT_DIR / alg / f"{etype}_{dtype}_{depth}_{ham_str}_{norm}_{num_evts}"
 
     data = {}
     # Iterate over the invariant masses
