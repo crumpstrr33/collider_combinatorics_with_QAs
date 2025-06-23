@@ -24,6 +24,7 @@ def create_falqon_depth(
     depth - The depth to get the info for.
     """
     num_fsp = NUM_FSP_DICT[metadatum[4]]
+    correct = SYM_TRUE_BS_DICT[metadatum[4]]
     bitstrings = np.array([format(x, f"0{num_fsp}b") for x in range(2**num_fsp)])
 
     if metadatum[0] != "falqon":
@@ -44,11 +45,11 @@ def create_falqon_depth(
             }
             probs = datum[invm]["depth_probs"][:, depth, :]
             invm_datum["probs"] = probs
-            invm_datum["rank_probs"] = probs[:, int("000111", 2)]
+            invm_datum["rank_probs"] = probs[:, int(correct, 2)]
 
             # Get indices of sorted probabilities for each event
             sorted_inds = np.flip(np.argsort(probs, axis=1), axis=1)
-            ranks = np.where(bitstrings[sorted_inds] == "000111")[1]
+            ranks = np.where(bitstrings[sorted_inds] == correct)[1]
             # This is the assumption that the bitstring is symmetric, so rank = 1
             # is the same as rank == 0, so subtract 1 from all odd ranks
             ranks -= ranks % 2
