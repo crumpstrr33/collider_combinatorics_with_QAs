@@ -36,7 +36,7 @@ def get_lambdas(
     evts - A (N, n_fsp, 4) numpy array where N is any number, and n_fsp is the
         number of final state particles for this specific event.
     nume (default None --> ["min", "Jij"]) - The numerator for lambda.
-    denom (default None --> ["max", Pij"])- The denominator for lambda. For both `nume`
+    denom (default None --> ["max", Pij"]) - The denominator for lambda. For both `nume`
         and `denom`, the first element of the list is the operation to perform.
         It can be:
             "min" -- minimum, i.e. np.min
@@ -45,7 +45,8 @@ def get_lambdas(
         And the second element is what to perform the operation on. It can be:
             "Jij" -- The matrix returned by `get_Jijs`
             "Pij" -- The matrix returned by `get_Pijs`
-
+    scale (default 1) - How much to scale λ by. A larger value of `scale` will
+        tend towards a Hamiltonian of H1 and a smaller value tends towards H0.
     """
     nume = ["min", "Jij"] if nume is None else nume
     denom = ["max", "Pij"] if denom is None else denom
@@ -90,7 +91,7 @@ def get_bitstrings(N: int, astype: str = "bits") -> NDArray[Union[str, NDArray[i
 
     Parameters:
     N - Length of bitstring.
-    astype (default "int") - What type should be. Can be: "bits" or "spins". If
+    astype (default "bits") - What type should be. Can be: "bits" or "spins". If
         "bits", each element of the array will be a string of "0"'s and "1"'s.
         If "spins", each element with be a list of the integers -1 or +1.
     """
