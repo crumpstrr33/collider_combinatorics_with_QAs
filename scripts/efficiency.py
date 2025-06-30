@@ -11,6 +11,8 @@ from scipy.special import comb
 from .constants import (
     DEFAULT_BETA0,
     DEFAULT_DT,
+    DEFAULT_DTAU,
+    DEFAULT_PRECISION,
     INVMS,
     LAMBDA_OPERS,
     LAMBDA_VALS,
@@ -90,7 +92,8 @@ class JobRunner:
 
     def find_rank_and_prob(self, make_symmetric: bool) -> tuple[int, float]:
         """
-        For the current algorithm (assigned to self.alg), find the rank of `self.soln_bitstring`.
+        For the current algorithm (assigned to self.alg), find the rank of
+        `self.soln_bitstring`.
 
         Parameters:
         make_symmetric - If True, will combine the probabilities of symmetric
@@ -271,14 +274,15 @@ class JobRunner:
                         probs = self.alg.get_probs(as_dict=True)
                         costs = self.alg.costs.numpy()
                         evals = self.alg.evals
-                sym_probs = {
-                    k: v + probs[swap(k)]
-                    for k, v in probs.items()
-                    if k.startswith(self.soln_bitstring[0])
-                }
+                if self.soln_bitstring is not None:
+                    sym_probs = {
+                        k: v + probs[swap(k)]
+                        for k, v in probs.items()
+                        if k.startswith(self.soln_bitstring[0])
+                    }
+                    rank, prob = self.find_rank_and_prob(make_symmetric=False)
+                    sym_rank, sym_prob = self.find_rank_and_prob(make_symmetric=True)
                 expval = costs[-1]
-                rank, prob = self.find_rank_and_prob(make_symmetric=False)
-                sym_rank, sym_prob = self.find_rank_and_prob(make_symmetric=True)
                 match self.alg_str:
                     case "varqite":
                         params = [self.alg.current_thetas]
@@ -295,16 +299,17 @@ class JobRunner:
 
                 # Store data in arrays
                 probs_arr[ind] = np.array(list(probs.values()))
-                sym_probs_arr[ind] = np.array(list(sym_probs.values()))
+                if self.soln_bitstring is not None:
+                    sym_probs_arr[ind] = np.array(list(sym_probs.values()))
+                    rank_arr[ind] = rank
+                    prob_arr[ind] = prob
+                    sym_rank_arr[ind] = sym_rank
+                    sym_prob_arr[ind] = sym_prob
                 costs_arr[ind] = np.pad(costs, (0, self.steps - len(costs)))
                 for param_arr, one_params in zip(params_arr, params):
                     param_arr[ind] = one_params
                 expval_arr[ind] = expval
                 evals_arr[ind] = evals
-                rank_arr[ind] = rank
-                prob_arr[ind] = prob
-                sym_rank_arr[ind] = sym_rank
-                sym_prob_arr[ind] = sym_prob
                 min_bitstring_arr[ind] = minimum[0]
                 min_energy_arr[ind] = minimum[1]
                 if self.alg_str == "falqon":
@@ -335,6 +340,15 @@ class JobRunner:
                     }
                 case "varqite":
                     extras_dict = {"thetas": params_arr[0]}
+            # Things that only make sense if there is a correct bitstring
+            if self.soln_bitstring is not None:
+                extras_dict |= {
+                    "sym_probs": sym_probs_arr,
+                    "ranks": rank_arr,
+                    "rank_probs": prob_arr,
+                    "sym_ranks": sym_rank_arr,
+                    "sym_rank_probs": sym_prob_arr,
+                }
 
             # Save all the info
             pad = len(str(self.tot_evts))
@@ -348,14 +362,9 @@ class JobRunner:
                 coeffs=self.coeffs[invm_ind],
                 norm_coeffs=self.norm_coeffs[invm_ind],
                 probs=probs_arr,
-                sym_probs=sym_probs_arr,
                 costs=costs_arr,
                 expvals=expval_arr,
                 evals=evals_arr,
-                ranks=rank_arr,
-                rank_probs=prob_arr,
-                sym_ranks=sym_rank_arr,
-                sym_rank_probs=sym_prob_arr,
                 min_bitstrings=min_bitstring_arr,
                 min_energies=min_energy_arr,
                 **extras_dict,
@@ -476,7 +485,12 @@ def run_jobs(
     # Stuff that differs between QAOA and FALQON
     match alg.lower():
         case "varqite":
-            alg_kwargs = {"shots": shots, "steps": steps, "dtau": 0.5, "prec": 1e-5}
+            alg_kwargs = {
+                "shots": shots,
+                "steps": steps,
+                "dtau": DEFAULT_DTAU,
+                "prec": DEFAULT_PRECISION,
+            }
         case "falqon":
             alg_kwargs = {"dt": DEFAULT_DT, "init_beta": DEFAULT_BETA0}
         case _:
