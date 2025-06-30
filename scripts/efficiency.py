@@ -130,7 +130,7 @@ class JobRunner:
 
         # Create arrays of shape: [num_invm_bins, num_evts, ...], splits it all
         # up to be per event per invariant mass bin
-        split_evts, split_inds = split_data(evts=self.p4s)
+        split_evts, split_inds = split_data(evts=self.p4s, etype=self.etype)
         # Total number of event, e.g. 200
         self.tot_evts = split_evts.shape[1]
         self.p4s = split_evts[:, self.ind_lo : self.ind_hi, ...]
@@ -203,9 +203,7 @@ class JobRunner:
                 shift = np.zeros(self.coeffs.shape[:2])
             # Shift by the min and divide by range, goes from 0 to 1
             case "minmax":
-                norm = np.max(self.coeffs, axis=axes) - np.min(
-                    self.coeffs, axis=axes
-                )
+                norm = np.max(self.coeffs, axis=axes) - np.min(self.coeffs, axis=axes)
                 shift = np.min(self.coeffs, axis=axes)
             # Shift by the mean and divide by the standard deviation
             case "std":

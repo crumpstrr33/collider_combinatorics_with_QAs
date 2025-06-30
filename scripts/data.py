@@ -9,7 +9,7 @@ from .type_hints import evt_type, evts_type
 
 
 def split_data(
-    evts: evts_type,
+    evts: evts_type, etype: str = "ttbar"
 ) -> tuple[NDArray[evts_type], NDArray[NDArray[int]]]:
     """
     Splits up the events by their invariant masses into groups defined by
@@ -20,7 +20,7 @@ def split_data(
     evts - A (N, n_fsp, 4) numpy array where N is any number, and n_fsp is the
         number of final state particles for this specific event.
     """
-    invms = get_invms(evts=evts)
+    invms = get_invms(evts=evts, etype=etype)
     split_evts, split_inds = [], []
     for low, hi in zip(INVMS[:-1], INVMS[1:]):
         mask = np.where(np.logical_and(invms > low, invms < hi))[0]
