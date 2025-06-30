@@ -172,6 +172,11 @@ def main(
 
 
 if __name__ == "__main__":
+    # For
+    # - VarQITE: set depth=1, steps=500 (can vary)
+    # - FALQON: set depth=2500 (can vary) and comment out steps
+    # - QAOA-like: set steps=1000 (can vary)
+    # - H0: comment out "lambda_X" (not needed)
     evts_per_invm = None
 
     alg = "MAQAOA"
