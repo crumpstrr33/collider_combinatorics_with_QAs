@@ -88,9 +88,11 @@ def draw_random_events(
 if __name__ == "__main__":
     # Call this file from root directory as: python -m scripts.choose_inds
     num_evts_per_bin = 2000
-    etype = "tW"
+    etype = "ttbar"
     dtype = "parton"
     evts = draw_random_events(N=num_evts_per_bin, etype=etype, dtype=dtype)
+    # Just for testing
+    is_dryrun = False
 
     # Save events to data directory in root
     print(Path(__file__))
@@ -103,6 +105,6 @@ if __name__ == "__main__":
         stype="npz",
         overwrite=False,
         append=False,
-        dryrun=False,
+        dryrun=is_dryrun,
         evts=evts,
     )
