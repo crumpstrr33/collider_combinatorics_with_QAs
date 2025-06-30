@@ -137,9 +137,10 @@ def main(
     # Find number of events each invariant mass bin will have (assuming equal
     # numbers per bin). Can be specified so as to not use all data
     evts_per_invm = (
-        split_data(get_data(etype=etype, dtype=dtype, print_num_evts=False)[0])[
-            0
-        ].shape[1]
+        split_data(
+            evts=get_data(etype=etype, dtype=dtype, print_num_evts=False)[0],
+            etype=etype,
+        )[0].shape[1]
         if evts_per_invm is None
         else evts_per_invm
     )

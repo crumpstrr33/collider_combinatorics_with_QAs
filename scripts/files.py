@@ -96,7 +96,8 @@ def verify_data(
     # Find the total number of events per invariant mass bin
     if num_evts is None:
         num_evts = split_data(
-            evts=get_data(etype=etype, dtype=dtype, print_num_evts=False)[0]
+            evts=get_data(etype=etype, dtype=dtype, print_num_evts=False)[0],
+            etype=etype,
         )[0].shape[1]
     num_evts = int(num_evts)
     depth = int(depth)
@@ -125,7 +126,11 @@ def verify_data(
             ind_pairs.append([low_ind, hi_ind])
 
         # Find maximum index
-        max_ind = np.max(ind_pairs)
+        try:
+            max_ind = np.max(ind_pairs)
+        except ValueError:
+            print(f"{invm_dir} is empty.")
+            return False
         # Check to make sure do we do indeed have maximum number of events
         if max_ind != num_evts:
             print(
@@ -140,7 +145,9 @@ def verify_data(
             inds = np.arange(*pair)
             # Make sure we don't have duplicates of events
             if not np.all(np.in1d(inds, all_inds)):
-                p_str = f"{etype} | {dtype} | {alg} | p={depth} | {norm} | {hamiltonian} "
+                p_str = (
+                    f"{etype} | {dtype} | {alg} | p={depth} | {norm} | {hamiltonian} "
+                )
                 if lambda_nume is not None:
                     p_str += f" {lambda_nume} / {lambda_denom}"
                 print(
