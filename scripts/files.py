@@ -118,6 +118,12 @@ def verify_data(
         ind_pairs = []
         # Iterate over each .npz file
         for fpath in invm_dir.iterdir():
+            if fpath.name.startswith("."):
+                print(
+                    f"{fpath.name} exists in {fpath.parent}... This implies "
+                    f"that files are currently being copied over."
+                )
+                return False
             # Get the event indices in this specific file
             low_ind, hi_ind = re.findall(r"^eff_(\d+)-(\d+)\.npz$", fpath.name)[0]
             low_ind, hi_ind = int(low_ind), int(hi_ind)
