@@ -120,8 +120,7 @@ def verify_data(
         for fpath in invm_dir.iterdir():
             if fpath.name.startswith("."):
                 print(
-                    f"{fpath.name} exists in {fpath.parent}... This implies "
-                    f"that files are currently being copied over."
+                    f"{fpath.name} exists in {fpath.parent}... This implies that files are currently being copied over."
                 )
                 return False
             # Get the event indices in this specific file
@@ -151,15 +150,11 @@ def verify_data(
             inds = np.arange(*pair)
             # Make sure we don't have duplicates of events
             if not np.all(np.in1d(inds, all_inds)):
-                p_str = (
-                    f"{etype} | {dtype} | {alg} | p={depth} | {norm} | {hamiltonian} "
-                )
+                p_str = f"{etype} | {dtype} | {alg} | p={depth} | {norm} | {hamiltonian} "
                 if lambda_nume is not None:
                     p_str += f" {lambda_nume} / {lambda_denom}"
                 print(
-                    f"{p_str}\n"
-                    f"{invm:.2f} -- "
-                    f"Found duplicate indices looking at range {pair}"
+                    f"{p_str}\n{invm:.2f} -- Found duplicate indices looking at range {pair}"
                 )
                 return False
 

@@ -162,9 +162,7 @@ def int_to_bin(
     dtype (default "bits") - The type of numpy array, either bits or strings
     """
     dtype = {"bits": "S", "str": "U"}[dtype]
-    return np.array(
-        [str(format(int(x), f"0{N}b")) for x in arr], dtype=f"{dtype}{N}"
-    )
+    return np.array([str(format(int(x), f"0{N}b")) for x in arr], dtype=f"{dtype}{N}")
 
 
 def get_2dhist_invms(
@@ -216,10 +214,7 @@ def get_bitstrings(datum: datum_type) -> NDArray[str]:
     for invm in INVMS[:-1]:
         # Convert from decimal to binary
         bitstrings.append(
-            [
-                format(val, f"0{N}b")
-                for val in np.argmax(datum[invm]["probs"], axis=1)
-            ]
+            [format(val, f"0{N}b") for val in np.argmax(datum[invm]["probs"], axis=1)]
         )
 
     return np.array(bitstrings)

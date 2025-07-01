@@ -605,12 +605,8 @@ class VarQITE:
         """
         Create QNodes for each circuit.
         """
-        self.get_op_expvals = qml.QNode(
-            func=self.circuit_op_expvals, device=self.device
-        )
-        self.get_ham_expval = qml.QNode(
-            func=self.circuit_ham_expval, device=self.device
-        )
+        self.get_op_expvals = qml.QNode(func=self.circuit_op_expvals, device=self.device)
+        self.get_ham_expval = qml.QNode(func=self.circuit_ham_expval, device=self.device)
         self._get_probs = qml.QNode(func=self.circuit_probs, device=self.device)
 
     def get_probs(self, thetas: Optional[NDArray[float]] = None) -> dict[str, float]:

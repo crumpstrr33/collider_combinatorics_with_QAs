@@ -225,9 +225,7 @@ class JobRunner:
         a per invariant mass basis.
         """
         # Loop over invariant mass bins
-        for invm_ind, (coeffs, minimums) in enumerate(
-            zip(self.norm_coeffs, self.minima)
-        ):
+        for invm_ind, (coeffs, minimums) in enumerate(zip(self.norm_coeffs, self.minima)):
             invm = INVMS[invm_ind]
             N_evts, num_fsp, _ = coeffs.shape
             print(f"        ---- INVARIANT MASS = {invm:.2f} ----")

@@ -139,9 +139,7 @@ def get_event(
         explicit path to where the data file is. Replacing `etype` and `dtype`.
 
     """
-    evts, Jijs, Pijs, invms = get_data(
-        etype=etype, dtype=dtype, data_path=data_path
-    )
+    evts, Jijs, Pijs, invms = get_data(etype=etype, dtype=dtype, data_path=data_path)
     invm_inds = np.where(np.logical_and(invms > low_invm, invms < hi_invm))[0]
 
     if ind is None:
