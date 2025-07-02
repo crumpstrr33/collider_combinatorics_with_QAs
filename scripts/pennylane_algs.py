@@ -8,6 +8,8 @@ import pennylane as qml
 from numpy.typing import NDArray
 from pennylane import numpy as qmlnp
 
+from .constants import DEFAULT_BETA0, DEFAULT_DEVICE, DEFAULT_DT, DEFAULT_OPTIMIZER
+
 
 class VQA:
     """
@@ -30,9 +32,9 @@ class VQA:
         steps: Optional[int] = None,
         shots: Optional[int] = None,
         prec: float = 1e-8,
-        optimizer: str = "adam",
+        optimizer: str = DEFAULT_OPTIMIZER,
         opt_kwargs: dict[str, ...] = {},
-        device: str = "default.qubit",
+        device: str = DEFAULT_DEVICE,
         bitflip_prob: float = 0,
     ):
         """
@@ -354,10 +356,10 @@ class FALQON:
         self,
         coeff: NDArray[NDArray[float]],
         depth: int,
-        dt: float = 0.08,
-        init_beta: float = 0,
+        dt: float = DEFAULT_DT,
+        init_beta: float = DEFAULT_BETA0,
         shots: Optional[int] = None,
-        device: str = "default.qubit",
+        device: str = DEFAULT_DEVICE,
     ):
         self.coeff = coeff
         self.depth = depth
@@ -508,7 +510,8 @@ class VarQITE:
         shots: Optional[int] = None,
         prec: float = 1e-5,
         dtau: float = 0.5,
-        device: str = "default.qubit",
+        device: str = DEFAULT_DEVICE,
+        bitflip_prob: float = 0,
     ):
         """
         Algorithm for Variational Quantum Imaginary Time Evolution. This
@@ -521,12 +524,17 @@ class VarQITE:
         self.nq = len(coeff)
         self.prec = prec
         self.device = qml.device(device, wires=self.nq)
+        self.bitflip_prob = bitflip_prob
 
         if self.depth != 1:
             raise Exception(
                 "Doesn't support a depth different than one because I'll have "
                 "to change other files too, e.g. JobRunner and that isn't a "
-                "priority at this momen."
+                "priority at this moment."
+            )
+        if self.bitflip_prob != 0:
+            raise Exception(
+                "This algorithm doesn't support noisy simulations yet. Maybe eventually :)"
             )
 
         # Ordered array of all possible eigenstates

@@ -43,7 +43,7 @@ DEFAULT_DTAU = 0.5
 # Device to use
 DEFAULT_DEVICE = "default.qubit"
 
-ALG_CHOICES = ["qaoa", "maqaoa", "xqaoa", "falqon"]
+ALG_CHOICES = ["qaoa", "maqaoa", "xqaoa", "falqon", "varqite"]
 HAMILTONIAN_CHOICES = ["H0", "H1", "H2"]
 LAMBDA_OPERS = ["min", "max", "mean"]
 LAMBDA_VALS = ["Jij", "Pij"]

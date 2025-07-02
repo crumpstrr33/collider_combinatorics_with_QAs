@@ -14,7 +14,7 @@ from typing import Optional
 
 import numpy as np
 
-from .constants import LOG_DIR
+from .constants import DEFAULT_DEVICE, LOG_DIR
 from .data import split_data
 from .efficiency import run_jobs
 from .events import get_data
@@ -36,6 +36,7 @@ def worker(
     lambda_nume: tuple[str, str],
     lambda_denom: tuple[str, str],
     shots: Optional[int],
+    bitflip_prob: int,
     evts_per_invm: int,
 ) -> None:
     """
@@ -81,6 +82,7 @@ def worker(
                     lambda_nume=lambda_nume,
                     lambda_denom=lambda_denom,
                     shots=shots,
+                    bitflip_prob=bitflip_prob,
                     evts_per_invm=evts_per_invm,
                 )
             # Or error to file
@@ -100,10 +102,11 @@ def main(
     depth: int,
     norm_scheme: str,
     steps: Optional[int] = None,
-    device: str = "default.qubit",
+    device: str = DEFAULT_DEVICE,
     lambda_nume: Optional[tuple[str, str]] = None,
     lambda_denom: Optional[tuple[str, str]] = None,
     shots: Optional[int] = None,
+    bitflip_prob: int = 0,
     evts_per_invm: Optional[int] = None,
     dryrun: bool = True,
 ) -> None:
@@ -130,9 +133,11 @@ def main(
         in the H2 Hamiltonian.
     shots - The number of shots to do each circuit run. If None, use infinite
         shots, the ideal case.
+    bitflip_prob - The probability of a bitflip error for a gate execution.
+        The device must be set to "default.mixed" if this is nonzero.
     evts_per_invm (default None) - Total number of events to use per invariant
         mass bin. If None, uses all of them.
-    dryrun (defaul True) - If True, will not actually run jobs.
+    dryrun (default True) - If True, will not actually run jobs.
     """
     # Find number of events each invariant mass bin will have (assuming equal
     # numbers per bin). Can be specified so as to not use all data
@@ -188,6 +193,8 @@ if __name__ == "__main__":
     lambda_nume = ["min", "Jij"]
     lambda_denom = ["max", "Pij"]
     norm_scheme = "max"
+    bitflip_prob = 0.0
+    device = DEFAULT_DEVICE if bitflip_prob == 0 else "default.mixed"
 
     main(
         alg=alg,
@@ -196,9 +203,11 @@ if __name__ == "__main__":
         hamiltonian=hamiltonian,
         depth=depth,
         steps=steps,
+        device=device,
         norm_scheme=norm_scheme,
         lambda_nume=lambda_nume,
         lambda_denom=lambda_denom,
-        dryrun=False,
+        bitflip_prob=bitflip_prob,
         evts_per_invm=evts_per_invm,
+        dryrun=False,
     )

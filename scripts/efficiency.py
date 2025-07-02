@@ -12,10 +12,12 @@ from .constants import (
     DEFAULT_BETA0,
     DEFAULT_DT,
     DEFAULT_DTAU,
+    DEFAULT_OPTIMIZER,
     DEFAULT_PRECISION,
     INVMS,
     LAMBDA_OPERS,
     LAMBDA_VALS,
+    NOISY_DIR,
     NUM_FSP_DICT,
     OUTPUT_DIR,
     SYM_TRUE_BS_DICT,
@@ -42,6 +44,39 @@ class JobRunner:
         alg_kwargs: dict[str, ...],
         lambda_kwargs: dict[str, Sequence[str]],
     ):
+        """
+        Class used to to run jobs based on the given parameters. Gathers the
+        input data, runs the simulations, and saves the output data. The kwargs
+        above are what define a specific "run".
+
+        Parameters:
+        etype - The event type, can be "ttbar", "tW", or "6jet"
+        dtype - The data type, can be "parton", or "smeared"
+        ind_lo - The lower limit on the event index. If we have N events per
+            invariant mass bin, this says to start running the simulation on
+            the "ind_lo"th event for each bin.
+        ind_hi - The upper limit on the event index. We stop on (one before)
+            the "ind_hi"th event.
+        alg - The algorithm to simulate, can be "qaoa", "maqaoa", "xqaoa",
+            "falqon", or "varqite".
+        depth - How many layers in the circuit. This isn't implemented for
+            VarQITE, so it will be one if `alg="varqite"`
+        hamiltonian - The Hamiltonian to use as the cost function, can be "H0",
+            "H1", or "H2" where H2 = H0 + λ/2 * H1.
+        norm_scheme - How to normalize the coefficients of the Hamiltonian
+            terms (which are given as a symmetric matrix), can be "none", "max"
+            "min", "trace", "mean", "sum", "minmax", or "std" which are defined
+            in the `normalize_coeffs` method below. This shouldn't affect the
+            physics but can affect the convergence rates and such.
+        device - The Pennylane device to use.
+        root_dir - The root directory into which to save the output data.
+        alg_kwargs - A dictionary of kwargs to pass specifically to the
+            algorithm.
+        lambda_kwargs - A dictionary of the form
+                {"nume": lambda_nume, "denom": lambda_denom}
+            where `lambda_nume` and `lambda_denom` are the numerator and
+            denominator of the λ coefficient used in the H2 Hamiltonian.
+        """
         self.etype = etype
         self.dtype = dtype
         self.ind_lo = ind_lo
@@ -350,8 +385,11 @@ class JobRunner:
 
             # Save all the info
             pad = len(str(self.tot_evts))
+            bitflip_prob = self.alg_kwargs["bitflip_prob"]
+            noise = f"{100 * bitflip_prob:0>2.0f}_" if bitflip_prob != 0 else ""
+            name = f"eff_{noise}{self.ind_lo:0>{pad}}-{self.ind_hi:0>{pad}}"
             save(
-                name=f"eff_{self.ind_lo:0>{pad}}-{self.ind_hi:0>{pad}}",
+                name=name,
                 savedir=invm_dir,
                 stype="npz",
                 absolute=True,
@@ -408,6 +446,7 @@ def run_jobs(
     lambda_nume: Optional[tuple[str, str]] = None,
     lambda_denom: Optional[tuple[str, str]] = None,
     shots: Optional[int] = None,
+    bitflip_prob: int = 0,
 ):
     """
     Wrapper function for the JobRunner class. Essentially will run an algorithm
@@ -438,6 +477,8 @@ def run_jobs(
         in the H2 Hamiltonian.
     shots (default None)- The number of shots to do each circuit run. If None,
         use infinite shots, the ideal case.
+    bitflip_prob (default 0) - The probability of a bitflip error for a gate
+        execution. The device must be set to "default.mixed" if this is nonzero.
     """
     if steps is None and alg.lower() != "falqon":
         raise Exception(
@@ -474,7 +515,7 @@ def run_jobs(
         ham_str += f"-{''.join(lambda_nume)}-{''.join(lambda_denom)}"
     # Make run specific directory
     root_dir = (
-        OUTPUT_DIR
+        (NOISY_DIR if bitflip_prob != 0 else OUTPUT_DIR)
         / alg.lower()
         / f"{etype}_{dtype}_{depth}_{ham_str}_{norm_scheme}_{evts_per_invm}"
     )
@@ -492,7 +533,12 @@ def run_jobs(
         case "falqon":
             alg_kwargs = {"dt": DEFAULT_DT, "init_beta": DEFAULT_BETA0}
         case _:
-            alg_kwargs = {"shots": shots, "steps": steps, "optimizer": "adam"}
+            alg_kwargs = {
+                "shots": shots,
+                "steps": steps,
+                "optimizer": DEFAULT_OPTIMIZER,
+                "bitflip_prob": bitflip_prob,
+            }
     # Run it!
     job_runner = JobRunner(
         etype=etype,
