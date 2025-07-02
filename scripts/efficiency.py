@@ -386,7 +386,8 @@ class JobRunner:
             # Save all the info
             pad = len(str(self.tot_evts))
             bitflip_prob = self.alg_kwargs["bitflip_prob"]
-            noise = f"{100 * bitflip_prob:0>2.0f}_" if bitflip_prob != 0 else ""
+            # Save as permil, not percent
+            noise = f"{1000 * bitflip_prob:0>3.0f}_" if bitflip_prob != 0 else ""
             name = f"eff_{noise}{self.ind_lo:0>{pad}}-{self.ind_hi:0>{pad}}"
             save(
                 name=name,
