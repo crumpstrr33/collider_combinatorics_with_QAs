@@ -41,11 +41,14 @@ def create_falqon_depth(
             invm_datum = {
                 k: v
                 for k, v in datum[invm].items()
-                if k not in ["probs", "depth_probs", "ranks", "rank_probs"]
+                if k
+                not in ["probs", "depth_probs", "ranks", "rank_probs", "costs", "betas"]
             }
             probs = datum[invm]["depth_probs"][:, depth, :]
             invm_datum["probs"] = probs
             invm_datum["rank_probs"] = probs[:, int(correct, 2)]
+            invm_datum["costs"] = datum[invm]["costs"][:, :depth]
+            invm_datum["betas"] = datum[invm]["betas"][:, :depth]
 
             # Get indices of sorted probabilities for each event
             sorted_inds = np.flip(np.argsort(probs, axis=1), axis=1)
@@ -121,6 +124,7 @@ def parse_with_metadata(
     using the max normalization or MAQAOA with a depth of p=5. As of yet, this
     won't differentiate between the lambda numerator or denominator but I don't
     think I'll need that functionality due to dimensional analysis and hope.
+    Also, I don't look at number of events, can get confused with depth.
 
     Parameters:
     infos - A sequence where each element contains info to search through the
@@ -128,6 +132,8 @@ def parse_with_metadata(
     metadata - An array of elements of the list output by the `parse_data`
         method. Contains the metadata info for a run.
     """
+    # Ignore number of events
+    metadata = metadata[:, :-1]
     indices = []
     # Iterate over each search query
     for info in infos:
