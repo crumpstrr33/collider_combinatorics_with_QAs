@@ -216,7 +216,6 @@ def load_data(
 
         invm_data = defaultdict(list)
         # Iterate over the different files
-
         fpaths = list(invm_dir.iterdir())
         # Files may not be in order, so find next correct file by index
         lo_ind = 0
