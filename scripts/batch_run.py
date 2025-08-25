@@ -16,8 +16,8 @@ import numpy as np
 
 from .constants import DEFAULT_DEVICE, LOG_DIR
 from .data import split_data
-from .efficiency import run_jobs
 from .events import get_data
+from .job_runner import run_jobs
 
 runs_per_invm_per_core = 100
 
