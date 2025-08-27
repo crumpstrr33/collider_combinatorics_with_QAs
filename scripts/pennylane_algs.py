@@ -377,6 +377,8 @@ class FALQON:
         self.edges = np.array(list(combinations(range(self.N), r=2)))
         self.weights = np.array([self.coeff[edge[0], edge[1]] for edge in self.edges])
 
+        self.param_shapes = ((self.depth,),)
+
         # FALQON-specific parameters
         self.dt = dt
         self.init_beta = init_beta
@@ -521,10 +523,12 @@ class VarQITE:
         self.depth = depth  # doesn't do anything atm
         self.steps = steps
         self.dtau = dtau
-        self.nq = len(coeff)
+        self.N = len(coeff)
         self.prec = prec
-        self.device = qml.device(device, wires=self.nq)
+        self.device = qml.device(device, wires=self.N)
         self.bitflip_prob = bitflip_prob
+
+        self.param_shapes = ((self.depth, int(comb(self.N, 2))),)
 
         if self.depth != 1:
             raise Exception(
@@ -538,13 +542,11 @@ class VarQITE:
             )
 
         # Ordered array of all possible eigenstates
-        self.bitstrings = np.array(
-            [format(bs, f"0{self.nq}b") for bs in range(2**self.nq)]
-        )
+        self.bitstrings = np.array([format(bs, f"0{self.N}b") for bs in range(2**self.N)])
         # Verteices of our graph
-        self.vertices = np.arange(self.nq)
+        self.vertices = np.arange(self.N)
         # The edges represented by tuples of vertices
-        self.edges = np.stack(np.triu_indices(self.nq, k=1), axis=1)
+        self.edges = np.stack(np.triu_indices(self.N, k=1), axis=1)
         # The weights for each edge
         self.weights = np.array([self.coeff[edge[0], edge[1]] for edge in self.edges])
         # # The operators of the Hamiltonian (without their weights)
@@ -554,7 +556,7 @@ class VarQITE:
         self.hamiltonian = qml.Hamiltonian(self.weights, self.ops)
         self.qubit_order = self._order_qubits()
         # Ordered tuples for ZY gates
-        self.qubit_pairs = [(q, r) for q in range(self.nq) for r in range(q)]
+        self.qubit_pairs = [(q, r) for q in range(self.N) for r in range(q)]
         # Creates circuits to run
         self._create_qnodes()
 
@@ -581,7 +583,7 @@ class VarQITE:
         """
         Builds ansatz.
         """
-        for ind in range(self.nq):
+        for ind in range(self.N):
             qml.Hadamard(ind)
 
         for ind, (q, r) in enumerate(self.qubit_pairs):
@@ -692,7 +694,7 @@ class VarQITE:
         Runs full optimization.
         """
         start_time = dt.now()
-        self.current_thetas = qmlnp.ones(comb(self.nq, 2)) * np.pi
+        self.current_thetas = qmlnp.ones(comb(self.N, 2)) * np.pi
         for self.step_ind in range(self.steps):
             step_start = dt.now()
             self.current_thetas = self.step(self.current_thetas)
