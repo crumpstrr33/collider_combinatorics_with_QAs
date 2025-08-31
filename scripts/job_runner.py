@@ -229,13 +229,9 @@ class JobRunner:
             costs -- The evolution of the expectation value per step
             evals -- Number of circuit updates (evaluations) completed
             probs -- The probability for each bitstring ordered by bitstring value
-            sym_probs -- Same as `probs` but combining symmetric bitstrings,
-                i.e. when swapping 0 <--> 1
             rank -- The placement/rank of the correct bitstring
                 e.g. 0 == first place == most probable
             prob --  The probability of this correct bitstring
-            sym_rank -- The same as `rank` assuming bit symmetry
-            sym_prob -- The same of `prob` assuming bit symmetry
             min_bitstring -- The bitstring that minimizes the energy
             min_energy -- Said energy of this ground state
             depth_probs -- (only for FALQON) The probability for each depth
@@ -255,11 +251,8 @@ class JobRunner:
         self.costs = []
         self.evals = []
         self.probs = []
-        self.sym_probs = []
         self.rank = []
         self.prob = []
-        self.sym_rank = []
-        self.sym_prob = []
         self.min_bitstring = []
         self.min_energy = []
         if self.alg_str == "falqon":
@@ -289,13 +282,7 @@ class JobRunner:
                     costs = self.alg.costs.numpy()
                     evals = self.alg.evals
             if self.soln_bitstring is not None:
-                sym_probs = {
-                    k: v + probs[swap(k)]
-                    for k, v in probs.items()
-                    if k.startswith(self.soln_bitstring[0])
-                }
-                rank, prob = self.find_rank_and_prob(make_symmetric=False)
-                sym_rank, sym_prob = self.find_rank_and_prob(make_symmetric=True)
+                rank, prob = self.find_rank_and_prob()
             expval = costs[-1]
             match self.alg_str:
                 case "varqite":
@@ -317,11 +304,8 @@ class JobRunner:
             self.costs.append(list(costs) + [np.nan] * (self.steps - len(costs)))
             self.evals.append(evals)
             self.probs.append(list(probs.values()))
-            self.sym_probs.append(list(sym_probs.values()))
             self.rank.append(rank)
             self.prob.append(prob)
-            self.sym_rank.append(sym_rank)
-            self.sym_prob.append(sym_prob)
             self.min_bitstring.append(minimum[0])
             self.min_energy.append(minimum[1])
             if self.alg_str == "falqon":
@@ -353,11 +337,8 @@ class JobRunner:
         self.costs = np.array(self.costs)
         self.evals = np.array(self.evals)
         self.probs = np.array(self.probs)
-        self.sym_probs = np.array(self.sym_probs)
         self.rank = np.array(self.rank)
         self.prob = np.array(self.prob)
-        self.sym_rank = np.array(self.sym_rank)
-        self.sym_prob = np.array(self.sym_prob)
         self.min_bitstring = np.array(self.min_bitstring)
         self.min_energy = np.array(self.min_energy)
         if self.alg_str == "falqon":
@@ -372,26 +353,16 @@ class JobRunner:
             evts=self.p4s, hamiltonian=self.hamiltonian, **self.lambda_kwargs
         )
 
-    def find_rank_and_prob(self, make_symmetric: bool) -> tuple[int, float]:
+    def find_rank_and_prob(self) -> tuple[int, float]:
         """
         For the current algorithm (assigned to self.alg), find the rank of
         `self.soln_bitstring`.
-
-        Parameters:
-        make_symmetric - If True, will combine the probabilities of symmetric
-            bit strings, e.g. "010" and "101".
         """
         match self.alg_str:
             case "varqite":
                 probs = self.alg.get_probs()
             case _:
                 probs = self.alg.get_probs(as_dict=True)
-        if make_symmetric:
-            probs = {
-                k: v + probs[swap(k)]
-                for k, v in probs.items()
-                if k.startswith(self.soln_bitstring[0])
-            }
 
         sorted_probs = sorted(probs.items(), key=lambda x: x[1], reverse=True)
 
@@ -438,14 +409,11 @@ def run_jobs(
         costs: The cost (i.e. `expval`) for each step of the circuit, the last
             value of this array == `expvals`
         evals: Number of circuit evaluations, can reach a max of `steps`
-        probs: The probabilities of each
-        "sym_probs": runner.sym_probs,
-        "ranks": runner.rank,
-        "rank_probs": runner.prob,
-        "sym_ranks": runner.sym_rank,
-        "sym_rank_probs": runner.sym_prob,
-        "min_bitstrings": runner.min_bitstring,
-        "min_energies": runner.min_energy,
+        probs: The probabilities of each bitstring
+        ranks: The placement/rank of the correct bitstring
+        rank_probs: The probability for this correct bitstring
+        min_bitstrings: Bitstring of the ground state, found by brute force
+        min_energies: The energy of said bitstring
 
     Parameters:
     evt_ind - If defined, then will run for the single event defined by this
@@ -535,11 +503,8 @@ def run_jobs(
         "costs": runner.costs,
         "evals": runner.evals,
         "probs": runner.probs,
-        "sym_probs": runner.sym_probs,
         "ranks": runner.rank,
         "rank_probs": runner.prob,
-        "sym_ranks": runner.sym_rank,
-        "sym_rank_probs": runner.sym_prob,
         "min_bitstrings": runner.min_bitstring,
         "min_energies": runner.min_energy,
     }
