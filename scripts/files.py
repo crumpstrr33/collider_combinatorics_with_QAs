@@ -17,7 +17,8 @@ def parse_data() -> NDArray[NDArray[str]]:
     """
     # Regex strign for extracting info from directory name
     ch = "[a-zA-Z0-9]"
-    re_dir = rf"^({ch}+)_({ch}+)_(\d+)_({ch}+)(?:-({ch}+)-({ch}+))?_({ch}+)_(\d+)$"
+    # re_dir = rf"^({ch}+)_({ch}+)_(\d+)_({ch}+)(?:-({ch}+)-({ch}+))?_({ch}+)_(\d+)$"
+    re_dir = rf"^({ch}+)_({ch}+)_(\d+)_({ch}+)(?:-({ch}+)-({ch}+))?_({ch}+)$"
 
     alg_dirs = OUTPUT_DIR.iterdir()
     params = []
@@ -34,7 +35,6 @@ def parse_data() -> NDArray[NDArray[str]]:
                 lambda_nume,
                 lambda_denom,
                 norm,
-                num_evts,
             ) = re.findall(re_dir, param_dir.name)[0]
 
             if hamiltonian == "H2" and (lambda_nume == "" or lambda_denom == ""):
@@ -50,7 +50,6 @@ def parse_data() -> NDArray[NDArray[str]]:
                     dtype,
                     lambda_nume,
                     lambda_denom,
-                    num_evts,
                 ]
             )
 
@@ -66,14 +65,13 @@ def verify_data(
     dtype: str = "parton",
     lambda_nume: Optional[str] = None,
     lambda_denom: Optional[str] = None,
-    num_evts: Optional[Union[int, str]] = None,
 ) -> bool:
     """
     Makes basic checks on the saved data. If this function returns True, then
     the data is available to be analyzed. It checks
-        1) That is does have the maximum number of events as per the data file
         2) That none of the events are duplicated
         3) That there are no events missing
+    It doesn't check if there are 12,000 / 6 = 2,000 total events found.
 
     Parameters:
     alg - The algorithm used for the data. Currently can be "qaoa", "maqaoa",
@@ -91,22 +89,15 @@ def verify_data(
         the H2 Hamiltonian.
     lambda_denom (default None) - The denominator of the lambda coefficient used
         in the H2 Hamiltonian.
-    num_evts (default None) - Total number of events per invariant mass bin.
     """
     # Find the total number of events per invariant mass bin
-    if num_evts is None:
-        num_evts = split_data(
-            evts=get_data(etype=etype, dtype=dtype, print_num_evts=False)[0],
-            etype=etype,
-        )[0].shape[1]
-    num_evts = int(num_evts)
     depth = int(depth)
 
     # Find the root directory for data
     ham_str = hamiltonian
     if hamiltonian == "H2":
         ham_str += f"-{lambda_nume}-{lambda_denom}"
-    root_dir = OUTPUT_DIR / alg / f"{etype}_{dtype}_{depth}_{ham_str}_{norm}_{num_evts}"
+    root_dir = OUTPUT_DIR / alg / f"{etype}_{dtype}_{depth}_{ham_str}_{norm}"
 
     # Loop over the invariant mass subdirectories
     for invm in INVMS[:-1]:
@@ -135,14 +126,6 @@ def verify_data(
             max_ind = np.max(ind_pairs)
         except ValueError:
             print(f"{invm_dir} is empty.")
-            return False
-        # Check to make sure do we do indeed have maximum number of events
-        if max_ind != num_evts:
-            print(
-                f"{invm:.2f} -- "
-                "Do not have maximum number of events. Max number from event "
-                + f"file is {num_evts} but found {max_ind} from data files."
-            )
             return False
         # Make sure we cover every event and every event only once
         all_inds = np.arange(0, max_ind)
@@ -175,7 +158,6 @@ def load_data(
     dtype: str = "parton",
     lambda_nume: Optional[str] = None,
     lambda_denom: Optional[str] = None,
-    num_evts: Optional[Union[int, str]] = None,
 ) -> dict[float, dict[str, NDArray[np.float64]]]:
     """
     Return a dictionary with the data for a given run of events. The returned
@@ -207,7 +189,7 @@ def load_data(
     ham_str = hamiltonian
     if hamiltonian == "H2":
         ham_str += f"-{lambda_nume}-{lambda_denom}"
-    root_dir = OUTPUT_DIR / alg / f"{etype}_{dtype}_{depth}_{ham_str}_{norm}_{num_evts}"
+    root_dir = OUTPUT_DIR / alg / f"{etype}_{dtype}_{depth}_{ham_str}_{norm}"
 
     data = {}
     # Iterate over the invariant masses
