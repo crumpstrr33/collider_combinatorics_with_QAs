@@ -1,43 +1,52 @@
 """
-This script allows for the submission of multiple "efficiency.py"'s. It will run
-through all 2000 events (per invm bin) submitting `runs_per_invm_per_core` jobs
-to each core. If `runs_per_invm_per_core=100`, then, with 2000 events per bin,
-that is 20 cores used total, with 2,000*6/20 = 12,000 / 20 = 600 jobs per core.
+Allows for the batch submission of multiple events over multiple thread via
+Python's multithreading package. This used to be set up as follows: all events
+would be split up into groups of N and then each group, via a single thread,
+would be sent to the class (now called `JobsRunner`) to run over every event and
+save the output. Now, it, by default, send one event to one thread. Instead of
+saving each event individually, it returns the data in this file and saves them
+all together. I shouldn't have ever done it the previous way and I think I will
+eventually remove the previous usecase.
 """
 
 import os
+import re
 from contextlib import redirect_stderr, redirect_stdout
 from functools import partial
-from multiprocessing import Pool
+from multiprocessing import Pool, current_process
 from pprint import pprint
 from typing import Optional
 
 import numpy as np
+from my_favorite_things import save
 
-from .constants import DEFAULT_DEVICE, LOG_DIR
-from .data import split_data
-from .events import get_data
+# from numpy.typing import NDArray
+from .constants import DEFAULT_DEVICE, INVMS, LOG_DIR, NOISY_DIR, OUTPUT_DIR
 from .job_runner import run_jobs
 
-runs_per_invm_per_core = 100
+unique_kwargs = {
+    "qaoa": ["gammas", "betas"],
+    "maqaoa": ["gammas", "betas"],
+    "xqaoa": ["gammmas", "betas", "alphas"],
+    "falqon": ["betas", "depth_probs"],
+    "varqite": ["thetas"],
+}
 
 
 def worker(
-    ind_lo: int,
-    ind_hi: int,
+    evt_ind: int,
+    alg: str,
     etype: str,
     dtype: str,
-    alg: str,
-    depth: int,
     hamiltonian: str,
+    depth: int,
     norm_scheme: str,
-    device: str,
     steps: int,
+    device: str,
     lambda_nume: tuple[str, str],
     lambda_denom: tuple[str, str],
     shots: Optional[int],
     bitflip_prob: int,
-    evts_per_invm: int,
 ) -> None:
     """
     An individual, single-core worker to run jobs. To be called by Pool. The
@@ -45,6 +54,7 @@ def worker(
     order to allow the use of the `partial_worker` function to work, so check
     `main` for explanation of parameters.
     """
+    worker_uid = f"{os.getpid()} -- {current_process().name}"
     # Create file names for output and error files in log directory
     ham_str = hamiltonian
     if hamiltonian == "H2":
@@ -52,27 +62,33 @@ def worker(
         lambda_denom = lambda_denom
         ham_str += f"-{''.join(lambda_nume)}-{''.join(lambda_denom)}"
     attrs = f"{dtype}_{etype}_{alg}_p{depth}_{ham_str}_{norm_scheme}"
-    out_path = LOG_DIR / f"job_{attrs}_{ind_lo:0>6}-{ind_hi:0>6}.out"
-    err_path = LOG_DIR / f"job_{attrs}_{ind_lo:0>6}-{ind_hi:0>6}.err"
-    os.makedirs(LOG_DIR, exist_ok=True)
+    output_dir = LOG_DIR / "out" / attrs
+    error_dir = LOG_DIR / "err" / attrs
+    log_name = f"{re.findall(r'(\d+)', current_process().name)[0]}_{os.getpid()}"
+    out_path = output_dir / f"{log_name}.out"
+    err_path = error_dir / f"{log_name}.err"
+    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(error_dir, exist_ok=True)
 
     # Create contexts for stdout and stderr files
-    with open(out_path, "w") as fout, open(err_path, "w") as ferr:
+    with open(out_path, "a") as fout, open(err_path, "a") as ferr:
         # Redirect stdout and stdout to these files
         with redirect_stdout(fout), redirect_stderr(ferr):
             # Run job
             try:
-                print(f" {'-' * 10} PARAMS {'-' * 10} ")
-                for k, v in locals().items():
-                    if k not in ["fout", "ferr", "ham_str"]:
-                        print(f"{k} -- {v}")
+                # Print out info for entire one only once, when file it empty
+                if not os.stat(out_path).st_size:
+                    print(f"{worker_uid}\n")
+                    print(f" {'-' * 10} PARAMS {'-' * 10} ")
+                    for k, v in locals().items():
+                        if k not in ["fout", "ferr", "ham_str"]:
+                            print(f"{k} -- {v}")
 
-                print(f"\n {'-' * 10} START OF JOBS {'-' * 10} ")
-                run_jobs(
+                    print(f"\n {'-' * 10} START OF JOBS {'-' * 10} ")
+                data_dict = run_jobs(
+                    evt_ind=evt_ind,
                     etype=etype,
                     dtype=dtype,
-                    ind_lo=ind_lo,
-                    ind_hi=ind_hi,
                     alg=alg,
                     depth=depth,
                     hamiltonian=hamiltonian,
@@ -83,8 +99,39 @@ def worker(
                     lambda_denom=lambda_denom,
                     shots=shots,
                     bitflip_prob=bitflip_prob,
-                    evts_per_invm=evts_per_invm,
                 )
+                return_tuple = (
+                    data_dict["invm_p4s"],
+                    data_dict["invms"],
+                    data_dict["coeffs"],
+                    data_dict["norm_coeffs"],
+                    data_dict["probs"],
+                    data_dict["sym_probs"],
+                    data_dict["costs"],
+                    data_dict["expvals"],
+                    data_dict["evals"],
+                    data_dict["ranks"],
+                    data_dict["rank_probs"],
+                    data_dict["sym_ranks"],
+                    data_dict["sym_rank_probs"],
+                    data_dict["min_bitstrings"],
+                    data_dict["min_energies"],
+                )
+                match alg.lower():
+                    case "qaoa" | "maqaoa":
+                        return_tuple += (data_dict["gammas"], data_dict["betas"])
+                    case "xqaoa":
+                        return_tuple += (
+                            data_dict["gammas"],
+                            data_dict["betas"],
+                            data_dict["alphas"],
+                        )
+                    case "falqon":
+                        return_tuple += (data_dict["betas"], data_dict["depth_probs"])
+                    case "varqite":
+                        return_tuple += data_dict["thetas"]
+
+                return return_tuple
             # Or error to file
             except Exception:
                 from traceback import print_exc
@@ -98,22 +145,25 @@ def main(
     alg: str,
     etype: str,
     dtype: str,
+    ind_lo: str,
+    ind_hi: str,
     hamiltonian: str,
     depth: int,
     norm_scheme: str,
+    workers: Optional[int] = None,
     steps: Optional[int] = None,
     device: str = DEFAULT_DEVICE,
     lambda_nume: Optional[tuple[str, str]] = None,
     lambda_denom: Optional[tuple[str, str]] = None,
     shots: Optional[int] = None,
     bitflip_prob: int = 0,
-    evts_per_invm: Optional[int] = None,
     dryrun: bool = True,
 ) -> None:
     """
     Main function to run jobs. Distributes jobs in Pool to run.
 
     Parameters:
+    workers - The number of threads to create.
     etype - The event type, currently can be "ttbar", "tW" or "6jet".
     dtype - The data type, currently can be "parton" or "smeared".
     ind_lo - The lower index of events to run the algorithm on, inclusive.
@@ -135,45 +185,87 @@ def main(
         shots, the ideal case.
     bitflip_prob - The probability of a bitflip error for a gate execution.
         The device must be set to "default.mixed" if this is nonzero.
-    evts_per_invm (default None) - Total number of events to use per invariant
-        mass bin. If None, uses all of them.
     dryrun (default True) - If True, will not actually run jobs.
     """
-    # Find number of events each invariant mass bin will have (assuming equal
-    # numbers per bin). Can be specified so as to not use all data
-    evts_per_invm = (
-        split_data(
-            evts=get_data(etype=etype, dtype=dtype, print_num_evts=False)[0],
-            etype=etype,
-        )[0].shape[1]
-        if evts_per_invm is None
-        else evts_per_invm
-    )
     # Print used parameters
     print("Parameters:")
     pprint(locals())
-    ignored = ["ignored", "dryrun"]
+    ignored = ["ignored", "dryrun", "workers", "ind_lo", "ind_hi"]
     partial_worker = partial(
         worker, **{k: v for k, v in locals().items() if k not in ignored}
     )
+    evt_inds = np.arange(ind_lo, ind_hi)
 
-    # Find the index limits of each job, e.g. [0, 100, 200, 300, ...]
-    ind_lims = np.arange(0, evts_per_invm + 1, runs_per_invm_per_core)
-    # Turn those limits into tuple for low and high limits for each job
-    ind_pairs = np.dstack((ind_lims[:-1], ind_lims[1:]))[0]
-
-    # Print index limits that are going to be used
-    print("\nIndex pairs:")
-    for ind_pair in ind_pairs:
-        print(f"\t{ind_pair}")
-    print(f"\nUsing {len(ind_lims) - 1} cores.")
-
-    # Run jobs!
     if dryrun:
         print("This was a dryrun. Ending...")
-    else:
-        with Pool() as pool:
-            pool.starmap(partial_worker, ind_pairs)
+        return
+
+    # Run jobs!
+    with Pool(workers) as pool:
+        invm_data = pool.map(partial_worker, evt_inds)
+
+    kwargs = unique_kwargs[alg.lower()]
+    # Number of events
+    N_evts = len(invm_data)
+    # Number of different output data
+    N_outs = len(invm_data[0])
+    # We are saving to individual per-invm directory so loop over them
+    for ind, invm in enumerate(INVMS[:-1]):
+        # Make a more specific string if we need to specify the lambda coefficient
+        ham_str = hamiltonian
+        if hamiltonian == "H2":
+            lambda_nume = lambda_nume
+            lambda_denom = lambda_denom
+            ham_str += f"-{''.join(lambda_nume)}-{''.join(lambda_denom)}"
+        # Make run specific directory
+        root_dir = (
+            (NOISY_DIR if bitflip_prob != 0 else OUTPUT_DIR)
+            / alg.lower()
+            / f"{etype}_{dtype}_{depth}_{ham_str}_{norm_scheme}"
+        )
+        os.makedirs(root_dir, exist_ok=True)
+
+        # Create save directory
+        invm_dir = root_dir / f"{invm:.2f}"
+        print(f"Created directory: {invm_dir}")
+        os.makedirs(invm_dir, exist_ok=True)
+
+        # Save as permil, not percent
+        noise = f"{1000 * bitflip_prob:0>3.0f}_" if bitflip_prob != 0 else ""
+        name = f"eff_{noise}{ind_lo:0>{5}}-{ind_hi:0>{5}}"
+
+        # Swapping from (N_evts, N_outs) to (N_outs, N_evts)
+        outs = []
+        for M in range(N_outs):
+            out_res = []
+            for N in range(N_evts):
+                out_res.append(invm_data[N][M][ind])
+
+            outs.append(np.array(out_res))
+        # Save everything
+        save(
+            name=name,
+            savedir=invm_dir,
+            stype="npz",
+            absolute=True,
+            invm_p4s=outs[0],
+            invms=outs[1],
+            coeffs=outs[2],
+            norm_coeffs=outs[3],
+            probs=outs[4],
+            sym_probs=outs[5],
+            costs=outs[6],
+            expvals=outs[7],
+            evals=outs[8],
+            ranks=outs[9],
+            rank_probs=outs[10],
+            sym_ranks=outs[11],
+            sym_rank_probs=outs[12],
+            min_bitstrings=outs[13],
+            min_energies=outs[14],
+            # e.g. gammas, betas, and so on
+            **dict(zip(kwargs, outs[-len(kwargs) :])),
+        )
 
 
 if __name__ == "__main__":
@@ -182,14 +274,15 @@ if __name__ == "__main__":
     # - FALQON: set depth=2500 (can vary) and comment out steps
     # - QAOA-like: set steps=1000 (can vary)
     # - H0: comment out "lambda_X" (not needed)
-    evts_per_invm = None
+    ind_lo = 1000
+    ind_hi = 2000
 
     alg = "MAQAOA"
     etype = "ttbar"
     dtype = "parton"
     hamiltonian = "H2"
-    depth = 5
-    steps = 1000
+    depth = 3
+    steps = 100
     lambda_nume = ["min", "Jij"]
     lambda_denom = ["max", "Pij"]
     norm_scheme = "max"
@@ -197,9 +290,12 @@ if __name__ == "__main__":
     device = DEFAULT_DEVICE if bitflip_prob == 0 else "default.mixed"
 
     main(
+        workers=10,
         alg=alg,
         etype=etype,
         dtype=dtype,
+        ind_lo=ind_lo,
+        ind_hi=ind_hi,
         hamiltonian=hamiltonian,
         depth=depth,
         steps=steps,
@@ -208,6 +304,5 @@ if __name__ == "__main__":
         lambda_nume=lambda_nume,
         lambda_denom=lambda_denom,
         bitflip_prob=bitflip_prob,
-        evts_per_invm=evts_per_invm,
         dryrun=False,
     )
