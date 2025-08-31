@@ -64,7 +64,7 @@ def worker(
     attrs = f"{dtype}_{etype}_{alg}_p{depth}_{ham_str}_{norm_scheme}"
     output_dir = LOG_DIR / "out" / attrs
     error_dir = LOG_DIR / "err" / attrs
-    log_name = f"{re.findall(r'(\d+)', current_process().name)[0]}_{os.getpid()}"
+    log_name = f"{re.findall(r'(\d+)', current_process().name)[0]:0>4}_{os.getpid()}"
     out_path = output_dir / f"{log_name}.out"
     err_path = error_dir / f"{log_name}.err"
     os.makedirs(output_dir, exist_ok=True)
