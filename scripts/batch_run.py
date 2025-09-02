@@ -126,7 +126,7 @@ def worker(
                     case "falqon":
                         return_tuple += (data_dict["betas"], data_dict["depth_probs"])
                     case "varqite":
-                        return_tuple += data_dict["thetas"]
+                        return_tuple += (data_dict["thetas"],)
 
                 return return_tuple
             # Or error to file
