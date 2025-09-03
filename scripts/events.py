@@ -42,7 +42,9 @@ def get_Jijs(evts: evts_type, return_Pijs=False) -> Jijs_type:
     return Jijs
 
 
-def get_invms(evts: evts_type, etype: str = "ttbar") -> NDArray[np.float64]:
+def get_invms(
+    evts: evts_type, etype: str = "ttbar", mass: Optional[float] = None
+) -> NDArray[np.float64]:
     """
     Finds the invariant mass of the events which is normalized by the mass sum
     of the final state particles.
@@ -55,8 +57,11 @@ def get_invms(evts: evts_type, etype: str = "ttbar") -> NDArray[np.float64]:
             "ttbar" -- a top and antitop,
             "tW" -- a top and a W boson,
             "4top" -- two top and antitop pairs
+    mass (default None) - If specified overrides the mass given from `etype`.
+        It would be the total mass of the parent particles, e.g. 2*m_t.
     """
-    norm = MASS_NORM_DICT[etype]
+    norm = MASS_NORM_DICT[etype] if mass is None else mass
+
     total = evts.sum(axis=-2)
 
     E = total[..., 0]
