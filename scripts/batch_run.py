@@ -13,7 +13,7 @@ import os
 import re
 from contextlib import redirect_stderr, redirect_stdout
 from functools import partial
-from multiprocessing import Pool, current_process
+from multiprocessing import Pool, current_process, set_start_method
 from pprint import pprint
 from typing import Optional
 
@@ -54,7 +54,8 @@ def worker(
     order to allow the use of the `partial_worker` function to work, so check
     `main` for explanation of parameters.
     """
-    worker_uid = f"{os.getpid()} -- {current_process().name}"
+    worker_pid, worker_name = os.getpid(), current_process().name
+    worker_title = f"{worker_pid} -- {worker_name}"
     # Create file names for output and error files in log directory
     ham_str = hamiltonian
     if hamiltonian == "H2":
@@ -64,7 +65,8 @@ def worker(
     attrs = f"{dtype}_{etype}_{alg}_p{depth}_{ham_str}_{norm_scheme}"
     output_dir = LOG_DIR / "out" / attrs
     error_dir = LOG_DIR / "err" / attrs
-    log_name = f"{re.findall(r'(\d+)', current_process().name)[0]:0>4}_{os.getpid()}"
+    uid_num = re.findall(r"(\d+)", worker_name)[0]
+    log_name = f"{uid_num:0>4}_{worker_pid}"
     out_path = output_dir / f"{log_name}.out"
     err_path = error_dir / f"{log_name}.err"
     os.makedirs(output_dir, exist_ok=True)
@@ -78,7 +80,7 @@ def worker(
             try:
                 # Print out info for entire one only once, when file it empty
                 if not os.stat(out_path).st_size:
-                    print(f"{worker_uid}\n")
+                    print(f"{worker_title}\n")
                     print(f" {'-' * 10} PARAMS {'-' * 10} ")
                     for k, v in locals().items():
                         if k not in ["fout", "ferr", "ham_str"]:
@@ -184,6 +186,8 @@ def main(
         The device must be set to "default.mixed" if this is nonzero.
     dryrun (default True) - If True, will not actually run jobs.
     """
+    if workers is None:
+        workers = len(os.sched_get_affinity(0))
     # Print used parameters
     print("Parameters:")
     pprint(locals())
@@ -198,6 +202,7 @@ def main(
         return
 
     # Run jobs!
+    set_start_method("spawn")
     with Pool(workers) as pool:
         invm_data = pool.map(partial_worker, evt_inds)
 
