@@ -105,7 +105,7 @@ if __name__ == "__main__":
 
     # Save events to data directory in root
     print(Path(__file__))
-    save_name = "ttbar_parton_events.npz"
+    save_name = "ttbar_parton_events"
     save(
         name=save_name,
         absolute=True,
