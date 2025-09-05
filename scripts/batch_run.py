@@ -201,7 +201,7 @@ def main(
     dryrun (default True) - If True, will not actually run jobs.
     """
     if workers is None:
-        workers = len(os.sched_get_affinity(0))
+        workers = len(os.sched_getaffinity(0))
     # Print used parameters
     print("Parameters:")
     pprint(locals())
