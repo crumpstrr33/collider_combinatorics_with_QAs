@@ -50,20 +50,13 @@ LAMBDA_OPERS = ["min", "max", "mean"]
 LAMBDA_VALS = ["Jij", "Pij"]
 NORM_CHOICES = ["none", "max", "min", "trace", "mean", "sum", "minmax", "std"]
 DATA_CHOICES = ["parton", "smeared"]
-EVENT_CHOICES = ["ttbar", "tW", "6jet", "mt173", "mt346", "mt500", "mt1000"]
+EVENT_CHOICES = ["ttbar", "tW", "6jet"]
 OPTIMIZERS = ["grad_descent", "adagrad", "adam"]
 
 SYM_TRUE_BS_DICT = {
     "ttbar": "000111",
     "tW": "00111",
     "6jet": None,
-    "tt6j": "000111",
-    "tt8j": "00001111",
-    "tt10j": "0000011111",
-    "tt16j": "0000000011111111",
-    "tt20j": "00000000001111111111",
-    "tt24j": "000000000000111111111111",
-    "tt30j": "000000000000000111111111111111",
 }
 MASS_NORM_DICT = {
     "ttbar": 2 * TOP_MASS,
@@ -72,10 +65,6 @@ MASS_NORM_DICT = {
     # just to have some comparison/concept of mass bins vis a vis `INVMS`
     "6jet": 2 * TOP_MASS,
     "4top": 4 * TOP_MASS,
-    "mt173": 2 * TOP_MASS,
-    "mt346": 2 * (2 * TOP_MASS),
-    "mt500": 2 * 500,
-    "mt1000": 2 * 1000,
 }
 NUM_FSP_DICT = {"ttbar": 6, "tW": 5, "6jet": 6}
 
@@ -86,8 +75,9 @@ n_jets = [3, 4, 5, 8, 10, 12, 15]
 for mt, nj in product(top_masses, n_jets):
     # Labeled as e.g. mt500_j10 for the case where the top quarks have a mass of
     # 500 GeV and each produce 10 jets.
-    label = f"mt{mt}_j{nj}"
+    label = f"mt{mt}j{nj}"
 
+    EVENT_CHOICES.append(label)
     SYM_TRUE_BS_DICT |= {label: "0" * nj + "1" * nj}
     MASS_NORM_DICT |= {label: 2 * mt}
     NUM_FSP_DICT |= {label: 2 * nj}
