@@ -11,6 +11,7 @@ eventually remove the previous usecase.
 
 import os
 import re
+from argparse import ArgumentParser
 from contextlib import redirect_stderr, redirect_stdout
 from functools import partial
 from multiprocessing import Pool, current_process, set_start_method
@@ -21,7 +22,20 @@ import numpy as np
 from my_favorite_things import save
 
 # from numpy.typing import NDArray
-from .constants import DEFAULT_DEVICE, INVMS, LOG_DIR, NOISY_DIR, OUTPUT_DIR
+from .constants import (
+    ALG_CHOICES,
+    DATA_CHOICES,
+    DEFAULT_DEVICE,
+    EVENT_CHOICES,
+    HAMILTONIAN_CHOICES,
+    INVMS,
+    LAMBDA_OPERS,
+    LAMBDA_VALS,
+    LOG_DIR,
+    NOISY_DIR,
+    NORM_CHOICES,
+    OUTPUT_DIR,
+)
 from .job_runner import run_jobs
 
 unique_kwargs = {
@@ -46,7 +60,7 @@ def worker(
     lambda_nume: tuple[str, str],
     lambda_denom: tuple[str, str],
     shots: Optional[int],
-    bitflip_prob: int,
+    bitflip_prob: float,
 ) -> None:
     """
     An individual, single-core worker to run jobs. To be called by Pool. The
@@ -155,7 +169,7 @@ def main(
     lambda_nume: Optional[tuple[str, str]] = None,
     lambda_denom: Optional[tuple[str, str]] = None,
     shots: Optional[int] = None,
-    bitflip_prob: int = 0,
+    bitflip_prob: float = 0.0,
     dryrun: bool = True,
 ) -> None:
     """
@@ -273,23 +287,105 @@ if __name__ == "__main__":
     # - FALQON: set depth=2500 (can vary) and comment out steps
     # - QAOA-like: set steps=1000 (can vary)
     # - H0: comment out "lambda_X" (not needed)
-    ind_lo = 1000
-    ind_hi = 2000
+    parser = ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--alg", "-a", type=lambda s: s.lower(), required=True, choices=ALG_CHOICES
+    )
+    parser.add_argument("--etype", "-e", type=str, required=True, choices=EVENT_CHOICES)
+    parser.add_argument("--dtype", "-d", type=str, required=True, choices=DATA_CHOICES)
+    parser.add_argument(
+        "--hamiltonian", "-h", type=str, required=True, choices=HAMILTONIAN_CHOICES
+    )
+    parser.add_argument("--depth", "-p", type=int, required=True)
+    parser.add_argument("--steps", "-s", type=int)
+    parser.add_argument("--lambda-nume", "-N", type=str, nargs="?", const="min_Jij")
+    parser.add_argument("--lambda-denom", "-D", type=str, nargs="?", const="max_Pij")
+    parser.add_argument(
+        "--norm_scheme", "-n", type=str, default="max", choices=NORM_CHOICES
+    )
+    parser.add_argument("--bitflip-prob", "-b", type=float, default=0.0)
+    parser.add_argument("--device", type=str)
+    parser.add_argument("--indlo", "-L", type=int, required=True)
+    parser.add_argument("--indhi", "-H", type=int, required=True)
+    parser.add_argument("--dryrun", action="store_true")
+    args = parser.parse_args()
 
-    alg = "MAQAOA"
-    etype = "ttbar"
-    dtype = "parton"
-    hamiltonian = "H2"
-    depth = 3
-    steps = 100
-    lambda_nume = ["min", "Jij"]
-    lambda_denom = ["max", "Pij"]
-    norm_scheme = "max"
-    bitflip_prob = 0.0
-    device = DEFAULT_DEVICE if bitflip_prob == 0 else "default.mixed"
+    alg = args.alg
+    etype = args.etype
+    dtype = args.dtype
+    norm_scheme = args.norm_scheme
+    bitflip_prob = args.bitflip_prob
+    dryrun = args.dryrun
+
+    # Steps should not be set for FALQON
+    steps = args.steps
+    if alg.lower() == "falqon" and steps is not None:
+        parser.error(
+            f"--steps cannot be set if algorithm is FALQON, but steps is {steps}."
+        )
+    if alg.lower() != "falqon" and steps is None:
+        parser.error("--steps must be set if algorithm is not FALQON.")
+
+    # Default device differs based on whether we have noise or not
+    device = args.device
+    if device is None:
+        device = DEFAULT_DEVICE if bitflip_prob == 0 else "default.mixed"
+
+    # Only constraint on depth is if we're doing VarQITE
+    depth = args.depth
+    if alg.lower() == "varqite" and depth != 1:
+        parser.error(
+            f"Algorithm set as VarQITE, so depth must be one. It is {depth} instead."
+        )
+
+    # Make sure index limits are ordered correctly
+    ind_lo = args.indlo
+    ind_hi = args.indhi
+    if ind_lo >= ind_hi:
+        parser.error(f"--indlo must be lesser than --indhi: {ind_lo} !< {ind_hi}")
+
+    # The H0 Hamiltonian means lambda should not be set and if H2, then lambda
+    # should be set
+    hamiltonian = args.hamiltonian
+    lambda_nume = args.lambda_nume
+    lambda_denom = args.lambda_denom
+    if hamiltonian == "H0" and (lambda_nume is not None or lambda_denom is not None):
+        parser.error(
+            "With Hamiltonian H0, the lambda arguments should not be set but:\n"
+            f"\t{lambda_nume = }\n\t{lambda_denom = }"
+        )
+    elif hamiltonian == "H2" and (lambda_nume is None or lambda_denom is None):
+        parser.error(
+            "With Hamiltonian H2, the lambda arguments need to be set but:\n"
+            f"\t{lambda_nume = }\n\t{lambda_denom = }"
+        )
+
+    # Make sure the values for lambda are valid if they are given
+    if lambda_nume is not None and lambda_denom is not None:
+        lambda_nume = lambda_nume.split("_")
+        lambda_denom = lambda_denom.split("_")
+        if lambda_nume[0] not in LAMBDA_OPERS:
+            parser.error(
+                f"The --lambda-nume operator, `{lambda_nume[0]}`, isn't valid. Must "
+                f"be from the following list:\n{LAMBDA_OPERS}"
+            )
+        if lambda_denom[0] not in LAMBDA_OPERS:
+            parser.error(
+                f"The --lambda-denom operator, `{lambda_denom[0]}`, isn't valid. Must "
+                f"be from the following list:\n{LAMBDA_OPERS}"
+            )
+        if lambda_nume[1] not in LAMBDA_VALS:
+            parser.error(
+                f"The --lambda-nume value, `{lambda_nume[1]}`, isn't valid. Must "
+                f"be from the following list:\n{LAMBDA_VALS}"
+            )
+        if lambda_denom[1] not in LAMBDA_VALS:
+            parser.error(
+                f"The --lambda-denom value, `{lambda_denom[1]}`, isn't valid. Must "
+                f"be from the following list:\n{LAMBDA_VALS}"
+            )
 
     main(
-        workers=10,
         alg=alg,
         etype=etype,
         dtype=dtype,
@@ -303,5 +399,5 @@ if __name__ == "__main__":
         lambda_nume=lambda_nume,
         lambda_denom=lambda_denom,
         bitflip_prob=bitflip_prob,
-        dryrun=False,
+        dryrun=dryrun,
     )
