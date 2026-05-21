@@ -1,15 +1,14 @@
 from pathlib import Path
 from random import choice
-from typing import Optional, Union
 
 import numpy as np
 from numpy.typing import NDArray
 
 from .constants import MASS_NORM_DICT, METRIC
-from .type_hints import Jijs_type, Pijs_type, evt_type, evts_type
+from .type_hints import CoeffsType, EvtsType, EvtType
 
 
-def get_Pijs(evts: evts_type) -> Pijs_type:
+def get_Pijs(evts: EvtsType) -> CoeffsType:
     """
     Returns an array of the matrix Pij = pi * pj, i.e. the dot product between
     two 4-momenta for the input of events
@@ -22,7 +21,7 @@ def get_Pijs(evts: evts_type) -> Pijs_type:
     return np.einsum("nij, nkj -> nik", evts_dagger, evts)
 
 
-def get_Jijs(evts: evts_type, return_Pijs=False) -> Jijs_type:
+def get_Jijs(evts: EvtsType, return_Pijs: bool = False) -> CoeffsType:
     """
     Returns an array of the matrix Jij = P_ik P_jl (summing over k and l) for
     the input of events
@@ -43,8 +42,8 @@ def get_Jijs(evts: evts_type, return_Pijs=False) -> Jijs_type:
 
 
 def get_invms(
-    evts: evts_type, etype: str = "ttbar", mass: Optional[float] = None
-) -> NDArray[np.float64]:
+    evts: EvtsType, etype: str = "ttbar", mass: float | None = None
+) -> NDArray[np.floating]:
     """
     Finds the invariant mass of the events which is normalized by the mass sum
     of the final state particles.
@@ -76,9 +75,9 @@ def get_invms(
 def get_data(
     etype: str = "ttbar",
     dtype: str = "parton",
-    data_path: Optional[Union[str, Path]] = None,
+    data_path: str | Path | None = None,
     print_num_evts: bool = True,
-) -> evts_type:
+) -> EvtsType:
     """
     Grabs all the relevant data for a given event and data type. Returns events
     (i.e. the 4-momentum of the final state particles), the Jij and Pij
@@ -123,9 +122,9 @@ def get_event(
     dtype: str = "parton",
     low_invm: float = 1.0,
     hi_invm: float = 3.0,
-    ind: Optional[int] = None,
-    data_path: Optional[Union[str | Path]] = None,
-) -> evt_type:
+    ind: int | None = None,
+    data_path: str | Path | None = None,
+) -> EvtType:
     """
     Returns a single event either randomly chosen between two invariant masses
     or a specific index N representing the Nth event between those masses.
@@ -145,14 +144,14 @@ def get_event(
 
     """
     evts, Jijs, Pijs, invms = get_data(etype=etype, dtype=dtype, data_path=data_path)
-    invm_inds = np.where(np.logical_and(invms > low_invm, invms < hi_invm))[0]
+    invm_mask = np.logical_and(invms > low_invm, invms < hi_invm)
 
     if ind is None:
-        ind = choice(invm_inds)
+        ind = choice(range(invm_mask.sum()))
 
     return (
-        evts[invm_inds][ind],
-        Jijs[invm_inds][ind],
-        Pijs[invm_inds][ind],
-        invms[invm_inds][ind],
+        evts[invm_mask][ind],
+        Jijs[invm_mask][ind],
+        Pijs[invm_mask][ind],
+        invms[invm_mask][ind],
     )
