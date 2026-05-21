@@ -16,16 +16,17 @@ from contextlib import redirect_stderr, redirect_stdout
 from functools import partial
 from multiprocessing import Pool, current_process, set_start_method
 from pprint import pprint
-from typing import Optional
 
 import numpy as np
 from my_favorite_things import save
 
-# from numpy.typing import NDArray
 from .constants import (
     ALG_CHOICES,
     DATA_CHOICES,
+    DEFAULT_BETA0,
     DEFAULT_DEVICE,
+    DEFAULT_DT,
+    DEFAULT_DTAU,
     EVENT_CHOICES,
     HAMILTONIAN_CHOICES,
     INVMS,
@@ -59,8 +60,9 @@ def worker(
     device: str,
     lambda_nume: tuple[str, str],
     lambda_denom: tuple[str, str],
-    shots: Optional[int],
+    shots: int,
     bitflip_prob: float,
+    alg_specific_kwargs: dict[str, float],
 ) -> None:
     """
     An individual, single-core worker to run jobs. To be called by Pool. The
@@ -115,6 +117,7 @@ def worker(
                     lambda_denom=lambda_denom,
                     shots=shots,
                     bitflip_prob=bitflip_prob,
+                    alg_specific_kwargs=alg_specific_kwargs,
                 )
                 return_tuple = (
                     data_dict["invm_p4s"],
@@ -125,8 +128,6 @@ def worker(
                     data_dict["costs"],
                     data_dict["expvals"],
                     data_dict["evals"],
-                    data_dict["ranks"],
-                    data_dict["rank_probs"],
                     data_dict["min_bitstrings"],
                     data_dict["min_energies"],
                 )
@@ -163,14 +164,15 @@ def main(
     hamiltonian: str,
     depth: int,
     norm_scheme: str,
-    workers: Optional[int] = None,
-    steps: Optional[int] = None,
+    workers: int | None = None,
+    steps: int | None = None,
     device: str = DEFAULT_DEVICE,
-    lambda_nume: Optional[tuple[str, str]] = None,
-    lambda_denom: Optional[tuple[str, str]] = None,
-    shots: Optional[int] = None,
+    lambda_nume: tuple[str, str] | None = None,
+    lambda_denom: tuple[str, str] | None = None,
+    shots: int | None = None,
     bitflip_prob: float = 0.0,
     dryrun: bool = True,
+    **alg_specific_kwargs,
 ) -> None:
     """
     Main function to run jobs. Distributes jobs in Pool to run.
@@ -199,6 +201,8 @@ def main(
     bitflip_prob - The probability of a bitflip error for a gate execution.
         The device must be set to "default.mixed" if this is nonzero.
     dryrun (default True) - If True, will not actually run jobs.
+    alg_specific_kwargs - Kwargs (optional or not) that are for specific
+        algorithms, e.g. beta0 and dt for FALQON.
     """
     if workers is None:
         workers = len(os.sched_getaffinity(0))
@@ -233,11 +237,28 @@ def main(
             lambda_nume = lambda_nume
             lambda_denom = lambda_denom
             ham_str += f"-{''.join(lambda_nume)}-{''.join(lambda_denom)}"
-        # Make run specific directory
+
+        # Algorithm-specific parameters, only show in directory name if they
+        # are different than the default values (specified in constants.py)
+        extra = ""
+        match alg.lower():
+            case "falqon":
+                beta0 = alg_specific_kwargs.get("beta0", DEFAULT_BETA0)
+                dt = alg_specific_kwargs.get("dt", DEFAULT_DT)
+                if beta0 != DEFAULT_BETA0:
+                    extra += f"_beta0{beta0:.3f}"
+                if dt != DEFAULT_DT:
+                    extra += f"_dt{dt:.3f}"
+            case "varqite":
+                dtau = alg_specific_kwargs.get("dtau", DEFAULT_DTAU)
+                if dtau != DEFAULT_DTAU:
+                    extra += f"_dtau{dtau:.3f}"
+
+        top_dir = f"{etype}_{dtype}_{depth}_{ham_str}_{norm_scheme}"
+        if extra != "":
+            top_dir += extra
         root_dir = (
-            (NOISY_DIR if bitflip_prob != 0 else OUTPUT_DIR)
-            / alg.lower()
-            / f"{etype}_{dtype}_{depth}_{ham_str}_{norm_scheme}"
+            (NOISY_DIR if bitflip_prob != 0 else OUTPUT_DIR) / alg.lower() / top_dir
         )
         os.makedirs(root_dir, exist_ok=True)
 
@@ -272,10 +293,8 @@ def main(
             costs=outs[5],
             expvals=outs[6],
             evals=outs[7],
-            ranks=outs[8],
-            rank_probs=outs[9],
-            min_bitstrings=outs[10],
-            min_energies=outs[11],
+            min_bitstrings=outs[8],
+            min_energies=outs[9],
             # e.g. gammas, betas, and so on
             **dict(zip(kwargs, outs[-len(kwargs) :])),
         )
@@ -308,6 +327,11 @@ if __name__ == "__main__":
     parser.add_argument("--indlo", "-L", type=int, required=True)
     parser.add_argument("--indhi", "-H", type=int, required=True)
     parser.add_argument("--dryrun", action="store_true")
+    # FALQON hyperparameters
+    parser.add_argument("--beta0", type=float, default=DEFAULT_BETA0)
+    parser.add_argument("--dt", type=float, default=DEFAULT_DT)
+    # VarQITE hyperparameter
+    parser.add_argument("--dtau", type=float, default=DEFAULT_DTAU)
     args = parser.parse_args()
 
     alg = args.alg
@@ -316,6 +340,9 @@ if __name__ == "__main__":
     norm_scheme = args.norm_scheme
     bitflip_prob = args.bitflip_prob
     dryrun = args.dryrun
+    beta0 = args.beta0
+    dt = args.dt
+    dtau = args.dtau
 
     # Steps should not be set for FALQON
     steps = args.steps
@@ -400,4 +427,9 @@ if __name__ == "__main__":
         lambda_denom=lambda_denom,
         bitflip_prob=bitflip_prob,
         dryrun=dryrun,
+        # Optional FALQON hyperparameters
+        beta0=beta0,
+        dt=dt,
+        # Optional VarQITE hyperparameter
+        dtau=dtau,
     )

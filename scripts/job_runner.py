@@ -4,8 +4,8 @@ class `JobRunner` runs a single event. Also includes a wrapper function for the
 class that returns relevant data as a dict.
 """
 
+from collections.abc import Sequence
 from datetime import datetime as dt
-from typing import Optional, Sequence
 
 import numpy as np
 from numpy.typing import NDArray
@@ -42,7 +42,7 @@ class JobRunner:
         device: str,
         alg_kwargs: dict[str, ...],
         lambda_kwargs: dict[str, Sequence[str]],
-    ):
+    ) -> None:
         """
         Class used to to run a single event based on the given parameters.
         Gathers the input data, and runs the simulation. The output data can be
@@ -120,7 +120,7 @@ class JobRunner:
         # Bit string that solves combinatorial problem
         self.soln_bitstring = SYM_TRUE_BS_DICT[self.etype]
 
-    def normalize_coeffs(self) -> NDArray[np.float64]:
+    def normalize_coeffs(self) -> NDArray[np.floating]:
         """
         Normalizes the coefficient matrix based on the normalization scheme.
 
@@ -192,7 +192,7 @@ class JobRunner:
         self.invms = self.invms[split_inds][:, self.evt_ind]
         self.norm_coeffs = self.normalize_coeffs()
 
-    def run_event(self, coeff: NDArray[NDArray[np.float64]]) -> None:
+    def run_event(self, coeff: NDArray[NDArray[np.floating]]) -> None:
         """
         Creates and Runs the algorithm.
         """
@@ -229,9 +229,6 @@ class JobRunner:
             costs -- The evolution of the expectation value per step
             evals -- Number of circuit updates (evaluations) completed
             probs -- The probability for each bitstring ordered by bitstring value
-            rank -- The placement/rank of the correct bitstring
-                e.g. 0 == first place == most probable
-            prob --  The probability of this correct bitstring
             min_bitstring -- The bitstring that minimizes the energy
             min_energy -- Said energy of this ground state
             depth_probs -- (only for FALQON) The probability for each depth
@@ -251,8 +248,6 @@ class JobRunner:
         self.costs = []
         self.evals = []
         self.probs = []
-        self.rank = []
-        self.prob = []
         self.min_bitstring = []
         self.min_energy = []
         if self.alg_str == "falqon":
@@ -281,8 +276,6 @@ class JobRunner:
                     probs = self.alg.get_probs(as_dict=True)
                     costs = self.alg.costs.numpy()
                     evals = self.alg.evals
-            if self.soln_bitstring is not None:
-                rank, prob = self.find_rank_and_prob()
             expval = costs[-1]
             match self.alg_str:
                 case "varqite":
@@ -304,8 +297,6 @@ class JobRunner:
             self.costs.append(list(costs) + [np.nan] * (self.steps - len(costs)))
             self.evals.append(evals)
             self.probs.append(list(probs.values()))
-            self.rank.append(rank)
-            self.prob.append(prob)
             self.min_bitstring.append(minimum[0])
             self.min_energy.append(minimum[1])
             if self.alg_str == "falqon":
@@ -337,40 +328,19 @@ class JobRunner:
         self.costs = np.array(self.costs)
         self.evals = np.array(self.evals)
         self.probs = np.array(self.probs)
-        self.rank = np.array(self.rank)
-        self.prob = np.array(self.prob)
         self.min_bitstring = np.array(self.min_bitstring)
         self.min_energy = np.array(self.min_energy)
         if self.alg_str == "falqon":
             self.depth_probs = np.array(self.depth_probs)
 
-    def brute_force(self):
+    def brute_force(self) -> None:
         """
-            Finds the minimum bitstring and corresponding energy by brute force for
-            each invariant mass event.
-        it's real tough spending two weeks"""
+        Finds the minimum bitstring and corresponding energy by brute force for
+        each invariant mass event.
+        """
         self.minima = get_minimum_energies(
             evts=self.p4s, hamiltonian=self.hamiltonian, **self.lambda_kwargs
         )
-
-    def find_rank_and_prob(self) -> tuple[int, float]:
-        """
-        For the current algorithm (assigned to self.alg), find the rank of
-        `self.soln_bitstring`.
-        """
-        match self.alg_str:
-            case "varqite":
-                probs = self.alg.get_probs()
-            case _:
-                probs = self.alg.get_probs(as_dict=True)
-
-        sorted_probs = sorted(probs.items(), key=lambda x: x[1], reverse=True)
-
-        return [
-            (ind, float(bs_prob[1]))
-            for ind, bs_prob in enumerate(sorted_probs)
-            if bs_prob[0] == self.soln_bitstring
-        ][0]
 
     def run(self) -> None:
         """
@@ -390,12 +360,13 @@ def run_jobs(
     hamiltonian: str,
     norm_scheme: str,
     device: str,
-    steps: Optional[int] = None,
-    lambda_nume: Optional[tuple[str, str]] = None,
-    lambda_denom: Optional[tuple[str, str]] = None,
-    shots: Optional[int] = None,
+    steps: int | None = None,
+    lambda_nume: tuple[str, str] | None = None,
+    lambda_denom: tuple[str, str] | None = None,
+    shots: int | None = None,
     bitflip_prob: int = 0,
-):
+    alg_specific_kwargs: dict[str, float] = {},
+) -> dict[str, NDArray[np.floating | str]]:
     """
     Wrapper function for the JobRunner class. Essentially will run an algorithm
     with all the given parameters for a specific event for each invariant mass
@@ -410,8 +381,6 @@ def run_jobs(
             value of this array == `expvals`
         evals: Number of circuit evaluations, can reach a max of `steps`
         probs: The probabilities of each bitstring
-        ranks: The placement/rank of the correct bitstring
-        rank_probs: The probability for this correct bitstring
         min_bitstrings: Bitstring of the ground state, found by brute force
         min_energies: The energy of said bitstring
 
@@ -438,6 +407,8 @@ def run_jobs(
         use infinite shots, the ideal case.
     bitflip_prob (default 0) - The probability of a bitflip error for a gate
         execution. The device must be set to "default.mixed" if this is nonzero.
+    alg_specific_kwargs (default {}) - Dictionary of parameters that are
+        specific to the algorithm.
     """
     if steps is None and alg.lower() != "falqon":
         raise Exception(
@@ -466,11 +437,14 @@ def run_jobs(
             alg_kwargs = {
                 "shots": shots,
                 "steps": steps,
-                "dtau": DEFAULT_DTAU,
-                "prec": DEFAULT_PRECISION,
+                "dtau": alg_specific_kwargs.get("dtau", DEFAULT_DTAU),
+                "prec": alg_specific_kwargs.get("prec", DEFAULT_PRECISION),
             }
         case "falqon":
-            alg_kwargs = {"dt": DEFAULT_DT, "init_beta": DEFAULT_BETA0}
+            alg_kwargs = {
+                "dt": alg_specific_kwargs.get("dt", DEFAULT_DT),
+                "init_beta": alg_specific_kwargs.get("beta0", DEFAULT_BETA0),
+            }
         case _:
             alg_kwargs = {
                 "shots": shots,
@@ -503,8 +477,6 @@ def run_jobs(
         "costs": runner.costs,
         "evals": runner.evals,
         "probs": runner.probs,
-        "ranks": runner.rank,
-        "rank_probs": runner.prob,
         "min_bitstrings": runner.min_bitstring,
         "min_energies": runner.min_energy,
     }
