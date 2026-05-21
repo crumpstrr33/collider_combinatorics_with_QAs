@@ -1,14 +1,17 @@
+from collections import defaultdict
+from collections.abc import Sequence
 from datetime import datetime as dt
 from itertools import combinations, product
 from math import comb, sqrt
-from typing import Optional, Sequence
 
 import numpy as np
 import pennylane as qml
 from numpy.typing import NDArray
 from pennylane import numpy as qmlnp
+from pennylane.measurements import ExpectationMP, ProbabilityMP, StateMP
 
 from .constants import DEFAULT_BETA0, DEFAULT_DEVICE, DEFAULT_DT, DEFAULT_OPTIMIZER
+from .type_hints import CoeffType
 
 
 class VQA:
@@ -27,16 +30,16 @@ class VQA:
 
     def __init__(
         self,
-        coeff: NDArray[NDArray[float]],
+        coeff: CoeffType,
         depth: int,
-        steps: Optional[int] = None,
-        shots: Optional[int] = None,
+        steps: int | None = None,
+        shots: int | None = None,
         prec: float = 1e-8,
         optimizer: str = DEFAULT_OPTIMIZER,
-        opt_kwargs: dict[str, ...] = {},
+        opt_kwargs: dict[str, float | str] = {},
         device: str = DEFAULT_DEVICE,
         bitflip_prob: float = 0,
-    ):
+    ) -> None:
         """
         In the __init__ for inheriting classes:
             1) Define the cost and mixer Hamiltonians using self.edges/
@@ -106,7 +109,7 @@ class VQA:
         # Add layers
         qml.layer(self.layer, self.depth, *params)
 
-    def _cost_circuit(self, *params: NDArray[float]):
+    def _cost_circuit(self, *params: NDArray[float]) -> ExpectationMP:
         """
         Define `self.expval_op` in inheriting class's __init__. It is the total
         cost function, usually problem/cost Hamiltonian.
@@ -114,7 +117,7 @@ class VQA:
         self.circuit(*params)
         return qml.expval(self.expval_op)
 
-    def _probs_circuit(self, *params: NDArray[float]):
+    def _probs_circuit(self, *params: NDArray[float]) -> ProbabilityMP:
         """
         Circuit for getting probabilities for each eigenstate.
         """
@@ -122,8 +125,8 @@ class VQA:
         return qml.probs()
 
     def get_probs(
-        self, as_dict: bool = False, params: Optional[list[NDArray[float]]] = None
-    ) -> NDArray[int] | dict[str, float]:
+        self, as_dict: bool = False, params: list[NDArray[float]] | None = None
+    ) -> NDArray[np.floating] | dict[str, float]:
         """
         Gets the probabilities for each eigenstate. Pass your own parameters to
         run the circuit with those specific parameters.
@@ -140,19 +143,26 @@ class VQA:
 
     def optimize(
         self,
-        init_params: Optional[Sequence[NDArray[float]]] = None,
+        init_params: Sequence[NDArray[float]] | None = None,
         print_it: bool = False,
         print_pref: str = "",
         print_newlines: bool = False,
-        init_val: float = 0.5,
+        init_vals: float = None,
     ) -> None:
         """
         Runs the optimization for given initial parameters. The shapes of those
         parameters should defined in a list as `self.param_shapes` in the __init__
         """
-        self.params = init_params
-        if self.params is None:
-            self.params = [init_val * qmlnp.ones(shape) for shape in self.param_shapes]
+        if init_params is None:
+            if init_vals is None:
+                # For gamma, beta, alpha
+                init_vals = [0.50, 0.50, 0.01]
+            self.params = [
+                val * qmlnp.ones(shape)
+                for val, shape in zip(init_vals, self.param_shapes)
+            ]
+        else:
+            self.params = init_params
 
         # Make sure the shapes are correct
         for ind, shape in enumerate(self.param_shapes):
@@ -208,16 +218,16 @@ class VQA:
 class QAOA(VQA):
     def __init__(
         self,
-        coeff: NDArray[NDArray[float]],
+        coeff: CoeffType,
         depth: int,
         steps: int,
-        shots: Optional[int] = None,
+        shots: int | None = None,
         prec: float = 1e-8,
         optimizer: str = "adam",
-        opt_kwargs: dict[str, ...] = {},
+        opt_kwargs: dict[str, float | str] = {},
         device: str = "default.qubit",
         bitflip_prob: float = 0,
-    ):
+    ) -> None:
         super().__init__(
             coeff=coeff,
             depth=depth,
@@ -252,16 +262,16 @@ class MAQAOA(VQA):
 
     def __init__(
         self,
-        coeff: NDArray[NDArray[float]],
+        coeff: CoeffType,
         depth: int,
         steps: int,
-        shots: Optional[int] = None,
+        shots: int | None = None,
         prec: float = 1e-8,
         optimizer: str = "adam",
-        opt_kwargs: dict[str, ...] = {},
+        opt_kwargs: dict[str, float | str] = {},
         device: str = "default.qubit",
         bitflip_prob: float = 0,
-    ):
+    ) -> None:
         super().__init__(
             coeff=coeff,
             depth=depth,
@@ -298,16 +308,16 @@ class XQAOA(VQA):
 
     def __init__(
         self,
-        coeff: NDArray[NDArray[float]],
+        coeff: CoeffType,
         depth: int,
         steps: int,
-        shots: Optional[int] = None,
+        shots: int | None = None,
         prec: float = 1e-8,
         optimizer: str = "adam",
-        opt_kwargs: dict[str, ...] = {},
+        opt_kwargs: dict[str, float | str] = {},
         device: str = "default.qubit",
         bitflip_prob: float = 0,
-    ):
+    ) -> None:
         super().__init__(
             coeff=coeff,
             depth=depth,
@@ -354,13 +364,13 @@ class FALQON:
 
     def __init__(
         self,
-        coeff: NDArray[NDArray[float]],
+        coeff: CoeffType,
         depth: int,
         dt: float = DEFAULT_DT,
         init_beta: float = DEFAULT_BETA0,
-        shots: Optional[int] = None,
+        shots: int | None = None,
         device: str = DEFAULT_DEVICE,
-    ):
+    ) -> None:
         self.coeff = coeff
         self.depth = depth
         self.shots = shots
@@ -413,7 +423,7 @@ class FALQON:
             [qml.PauliZ(edge[0]) @ qml.PauliZ(edge[1]) for edge in self.edges],
         )
 
-    def _state_circuit(self):
+    def _state_circuit(self) -> StateMP:
         """
         Finds the output state of the current circuit. Saved in `self._cur_state`
         and used to initalize the next layer.
@@ -421,14 +431,14 @@ class FALQON:
         self.circuit(self._new_beta)
         return qml.state()
 
-    def _probs_circuit(self):
+    def _probs_circuit(self) -> ProbabilityMP:
         """
         Circuit to return the probabilities for each eigenstate.
         """
         self.circuit()
         return qml.probs()
 
-    def _param_circuit(self):
+    def _param_circuit(self) -> tuple[ExpectationMP, ExpectationMP]:
         """
         Circuit to both minimize the cost function (i.e. the expectation value
         of `self.expval_op` with respect to the circuit) and the next parameter
@@ -437,7 +447,7 @@ class FALQON:
         self.circuit(self._new_beta)
         return qml.expval(self.expval_op), qml.expval(self.commutator)
 
-    def circuit(self, beta: Optional[float] = None) -> None:
+    def circuit(self, beta: float | None = None) -> None:
         """
         Actual circuit to run.
         """
@@ -452,7 +462,7 @@ class FALQON:
             for ind in range(self.N):
                 qml.PauliRot(self.dt * beta, "X", wires=ind)
 
-    def get_probs(self, as_dict: bool = False) -> NDArray[float] | dict[str, float]:
+    def get_probs(self, as_dict: bool = False) -> NDArray[np.floating] | dict[str, float]:
         """
         Gets the probabilities for each eigenstate.
         """
@@ -506,15 +516,15 @@ class FALQON:
 class VarQITE:
     def __init__(
         self,
-        coeff: NDArray[NDArray[float]],
+        coeff: CoeffType,
         depth: int = 1,
         steps: int = 10,
-        shots: Optional[int] = None,
+        shots: int | None = None,
         prec: float = 1e-5,
         dtau: float = 0.5,
         device: str = DEFAULT_DEVICE,
         bitflip_prob: float = 0,
-    ):
+    ) -> None:
         """
         Algorithm for Variational Quantum Imaginary Time Evolution. This
         algorithm is described in arxiv.org/pdf/2404.16135.
@@ -579,7 +589,7 @@ class VarQITE:
         """
         return np.argsort(np.sum(np.abs(self.coeff), axis=1))[::-1]
 
-    def _circuit(self, thetas: NDArray[float]):
+    def _circuit(self, thetas: NDArray[np.floating]) -> None:
         """
         Builds ansatz.
         """
@@ -590,21 +600,21 @@ class VarQITE:
             qubits = [self.qubit_order[r], self.qubit_order[q]]
             qml.PauliRot(-2 * thetas[ind], "ZY", wires=qubits)
 
-    def circuit_op_expvals(self, thetas: NDArray[float]):
+    def circuit_op_expvals(self, thetas: NDArray[np.floating]) -> NDArray[ExpectationMP]:
         """
         Circuit for expectation value of each term of Hamiltonian.
         """
         self._circuit(thetas=thetas)
         return qmlnp.array([qml.expval(op) for op in self.ops])
 
-    def circuit_ham_expval(self, thetas: NDArray[float]):
+    def circuit_ham_expval(self, thetas: NDArray[np.floating]) -> ExpectationMP:
         """
         Circuit for expectation value for full Hamiltonian.
         """
         self._circuit(thetas=thetas)
         return qml.expval(self.hamiltonian)
 
-    def circuit_probs(self, thetas: NDArray[float]):
+    def circuit_probs(self, thetas: NDArray[np.floating]) -> ProbabilityMP:
         """
         Circuit for probability of each eigenstate.
         """
@@ -619,7 +629,7 @@ class VarQITE:
         self.get_ham_expval = qml.QNode(func=self.circuit_ham_expval, device=self.device)
         self._get_probs = qml.QNode(func=self.circuit_probs, device=self.device)
 
-    def get_probs(self, thetas: Optional[NDArray[float]] = None) -> dict[str, float]:
+    def get_probs(self, thetas: NDArray[np.floating] | None = None) -> dict[str, float]:
         """
         Gets the probabilities for each eigenstate as a dictionary
         """
@@ -627,7 +637,7 @@ class VarQITE:
         probs = self._get_probs(thetas=thetas)
         return dict(zip(self.bitstrings, probs))
 
-    def find_gradient(self, thetas: NDArray[float]) -> NDArray[float]:
+    def find_gradient(self, thetas: NDArray[np.floating]) -> NDArray[np.floating]:
         """
         Finds theta dot via inverting finding G and D and inverting D (Eq. 6).
         Returns the gradient for each parameter.
@@ -666,7 +676,7 @@ class VarQITE:
         self.theta_dots.append(theta_dot)
         return theta_dot
 
-    def step(self, thetas: NDArray[float]) -> NDArray[float]:
+    def step(self, thetas: NDArray[np.floating]) -> NDArray[np.floating]:
         """
         Does single optimization step of algorithm. Returns new values for
         parameters.
