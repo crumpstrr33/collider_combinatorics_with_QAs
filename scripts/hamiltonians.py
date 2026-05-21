@@ -1,10 +1,11 @@
-from typing import Optional, Sequence, Union
+from collections.abc import Sequence
+from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
 
 from .events import get_Jijs, get_Pijs
-from .type_hints import evts_type
+from .type_hints import EvtsType
 
 
 def swap(bs: str) -> str:
@@ -14,15 +15,15 @@ def swap(bs: str) -> str:
     Parameters:
     bs - Bitstring to invert.
     """
-    return bs.replace("0", "9").replace("1", "0").replace("9", "1")
+    return bs.translate(str.maketrans("01", "10"))
 
 
 def get_lambdas(
-    evts: evts_type,
-    nume: Optional[Sequence[str]] = None,  # ["min", "Jij"],
-    denom: Optional[Sequence[str]] = None,  # ["max", "Pij"],
+    evts: EvtsType,
+    nume: Sequence[str] | None = None,  # ["min", "Jij"],
+    denom: Sequence[str] | None = None,  # ["max", "Pij"],
     scale: float = 1.0,
-) -> NDArray[np.float64]:
+) -> NDArray[np.floating]:
     """
     Finds the lambda coefficient for events. This is most commonly used in the
     Hamiltonian H = H0 + λH1, i.e. as the ratio between the contributions of the
@@ -63,9 +64,9 @@ def get_lambdas(
 
 def get_coefficients(
     hamiltonian: str,
-    evts: evts_type,
+    evts: EvtsType,
     **lambda_kwargs: Sequence[str],
-) -> NDArray[np.float64]:
+) -> NDArray[np.floating]:
     """
     Finds the coefficients of the quadratic spin terms for a specific
     Hamiltonian. For example, since H0 = J_ij * s_i * s_j, this will just return
@@ -85,7 +86,9 @@ def get_coefficients(
             return Jijs + lambdas[:, None, None] * Pijs / 2
 
 
-def get_bitstrings(N: int, astype: str = "bits") -> NDArray[Union[str, NDArray[int]]]:
+def get_bitstrings(
+    N: int, astype: Literal["bits", "spins"] = "bits"
+) -> NDArray[str | NDArray[int]]:
     """
     Gives all possible bitstrings of length `N`.
 
@@ -110,8 +113,8 @@ def get_bitstrings(N: int, astype: str = "bits") -> NDArray[Union[str, NDArray[i
 
 
 def get_bitstring_energies(
-    evts: evts_type, bs: str, hamiltonian: str, **lambda_kwargs: Sequence[str]
-) -> NDArray[np.float64]:
+    evts: EvtsType, bs: str, hamiltonian: str, **lambda_kwargs: Sequence[str]
+) -> NDArray[np.floating]:
     """
     Finds the energies for a given bitstring and Hamiltonian for the given
     events.
@@ -133,14 +136,11 @@ def get_bitstring_energies(
 
 
 def get_all_bitstring_energies(
-    evts: evts_type,
+    evts: EvtsType,
     hamiltonian: str,
     as_dict: bool = False,
     **lambda_kwargs: Sequence[str],
-) -> Union[
-    tuple[Sequence[str], NDArray[NDArray[np.float64]]],
-    NDArray[dict[str, np.float64]],
-]:
+) -> tuple[NDArray[str], NDArray[np.floating]] | NDArray[dict[str, np.floating]]:
     """
     Finds the energies for all possible bitstrings and a Hamiltonian for the
     given events. With N events and S = 2**n bitstrings (where n is the number
@@ -172,7 +172,7 @@ def get_all_bitstring_energies(
 
 
 def get_minimum_energies(
-    evts: evts_type, hamiltonian: str, **lambda_kwargs: Sequence[str]
+    evts: EvtsType, hamiltonian: str, **lambda_kwargs: Sequence[str]
 ) -> NDArray[object]:
     """
     Finds the energies and bitstring corresponding to the minimum energy for a
