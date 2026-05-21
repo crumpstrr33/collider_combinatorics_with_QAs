@@ -1,16 +1,14 @@
-from typing import Union
-
 import numpy as np
 from numpy.typing import NDArray
 
 from .constants import INVMS, METRIC
 from .events import get_invms
-from .type_hints import evt_type, evts_type
+from .type_hints import EvtsType, EvtType
 
 
 def split_data(
-    evts: evts_type, etype: str = "ttbar"
-) -> tuple[NDArray[evts_type], NDArray[NDArray[int]]]:
+    evts: EvtsType, etype: str = "ttbar"
+) -> tuple[NDArray[EvtsType], NDArray[NDArray[int]]]:
     """
     Splits up the events by their invariant masses into groups defined by
     the constant `INVMS`. Returns the split events and the indices for those
@@ -34,8 +32,8 @@ def split_data(
 
 
 def get_bitstring_invms(
-    evts: Union[evt_type, evts_type], bitstrings: Union[str, NDArray[str]]
-) -> NDArray[NDArray[float]]:
+    evts: EvtType | EvtsType, bitstrings: str | NDArray[str]
+) -> NDArray[NDArray[np.floating]]:
     """
     Finds the invariant mass for the 4-momenta represented by the "1" in the
     bitstring and "0" in the bitstring separately.

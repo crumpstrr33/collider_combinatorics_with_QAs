@@ -1,22 +1,22 @@
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence
 
 import numpy as np
 from my_favorite_things import save
 
 from .constants import EVT_DIR, INVMS, MASS_NORM_DICT
 from .events import get_invms
-from .type_hints import evts_type
+from .type_hints import EvtsType
 
 
 def draw_random_events(
     evts_fname: str,
     mass_norm: float,
     N: int,
-    invm_bins: Optional[Sequence[tuple[float]]] = None,
-    N_fsp: Optional[int] = None,
+    invm_bins: Sequence[tuple[float]] | None = None,
+    N_fsp: int | None = None,
     prec_bins: int = 500,
-) -> evts_type:
+) -> EvtsType:
     """
     From the original `.npy` file of madevent data, randomly chooses events and
     saves them in a (N, N_fsp, 4) numpy array as a `.npz` file where N is the
