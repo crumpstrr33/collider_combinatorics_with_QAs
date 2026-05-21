@@ -18,7 +18,7 @@ DATA_DIR = Path(environ["DATADIR"]) / "data"
 # directory in the repo's root.
 EVT_DIR = DATA_DIR / "evt_data"
 # Where the data from the QAs are outputted to
-OUTPUT_DIR = DATA_DIR / "debug"
+OUTPUT_DIR = DATA_DIR / "output"
 # Same as OUTPUT_DIR but for simulations with finite shots
 SHOT_DIR = DATA_DIR / "shot_data"
 # Same as OUTPUT_DIR but for simulations with noise
@@ -36,18 +36,30 @@ DEFAULT_OPTIMIZER = "adam"
 DEFAULT_STEPS = 1000
 DEFAULT_STEPSIZE = 0.01
 # FALQON-specific defaults
-DEFAULT_BETA0 = 0
-DEFAULT_DT = 0.08
+DEFAULT_BETA0 = 0.000
+DEFAULT_DT = 0.080
 # VarQITE-specific defaults
 DEFAULT_PRECISION = 1e-5
-DEFAULT_DTAU = 0.5
+DEFAULT_DTAU = 0.500
 # Device to use
 DEFAULT_DEVICE = "default.qubit"
+# Dictionary of all the defaults
+DEFAULT_DICT = {
+    "optimizer": DEFAULT_OPTIMIZER,
+    "steps": DEFAULT_STEPS,
+    "stepsize": DEFAULT_STEPSIZE,
+    "beta0": DEFAULT_BETA0,
+    "dt": DEFAULT_DT,
+    "precision": DEFAULT_PRECISION,
+    "dtau": DEFAULT_DTAU,
+    "device": DEFAULT_DEVICE,
+}
 
 ALG_CHOICES = ["qaoa", "maqaoa", "xqaoa", "falqon", "varqite"]
 HAMILTONIAN_CHOICES = ["H0", "H1", "H2"]
 LAMBDA_OPERS = ["min", "max", "mean"]
 LAMBDA_VALS = ["Jij", "Pij"]
+LAMBDA_COMBOS = [x + y for x, y in product(LAMBDA_OPERS, LAMBDA_VALS)]
 NORM_CHOICES = ["none", "max", "min", "trace", "mean", "sum", "minmax", "std"]
 DATA_CHOICES = ["parton", "smeared"]
 EVENT_CHOICES = ["ttbar", "tW", "6jet"]
