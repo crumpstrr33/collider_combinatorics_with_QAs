@@ -55,7 +55,6 @@ def find_efficiency(
             # For each event, index of max probability, i.e. base 10 of bitstring
             max_probs_inds = np.argmax(evt_probs, axis=1)
             tot_evts = max_probs_inds.shape[0]
-
             if find_correct:
                 bs_ind = int(cor_bs, 2)
                 bs_swap_ind = int(swap(cor_bs), 2)
@@ -102,11 +101,12 @@ def find_probabilities(
     data_len = len(data)
     n_bins = len(INVMS) - 1
     # Turn into a list of all the same etype
+    etypes = etype
     if isinstance(etype, str):
-        etype = [etype] * data_len
+        etypes = [etype] * data_len
 
     probs = np.empty((data_len, n_bins), dtype=np.float64)
-    for dind, (datum, etype) in enumerate(zip(data, etype)):
+    for dind, (datum, etype) in enumerate(zip(data, etypes)):
         # The correct bitstring
         cor_bs = SYM_TRUE_BS_DICT[etype]
 
@@ -205,7 +205,7 @@ def int_to_bin(
 
 
 def get_2dhist_invms(
-    datum: DatumType, metadatum: NDArray[str], by_invm_bin: bool = False
+    datum: DatumType, by_invm_bin: bool = False
 ) -> NDArray[tuple[float, float] | NDArray[tuple[float, float]]]:
     """
     Gets the masses of the final state particles based on what the algorithm
@@ -216,8 +216,6 @@ def get_2dhist_invms(
     Parameters:
     datum - The data for this run as created by the `JobRunner` class and saved
         as an .npz file.
-    metadatum - An element of the list output by the `parse_data` method.
-        Contains the metadata info for a run.
     by_invm_bin (default True) - If True, will keep the array as (M, N, 2) where
         M is the number of invariant mass bins and N is the number of events per
         bin. Otherwise, return as (MN, 2).
@@ -226,10 +224,11 @@ def get_2dhist_invms(
     num_bits = datum[2.50]["invm_p4s"].shape[1]
     for invm in INVMS[:-1]:
         # Most likely bitstrings per event
-        bitstrings = int_to_bin(np.argmax(datum[invm]["probs"], axis=1), N=num_bits)
-        invms.append(
-            get_bitstring_invms(evts=datum[invm]["invm_p4s"], bitstrings=bitstrings)
+        bitstrings = int_to_bin(
+            np.argmax(datum[invm]["probs"], axis=1), N=num_bits, dtype="str"
         )
+        # Invariant masses for the 0's and the 1's separately
+        invms.append(get_bitstring_invms(datum[invm]["invm_p4s"], bitstrings))
 
     invms = np.array(invms)
 
