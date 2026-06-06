@@ -39,13 +39,31 @@ from .constants import (
 )
 from .job_runner import run_jobs
 
-unique_kwargs = {
+# Kwargs that are algorithm-specific
+UNIQUE_KWARGS = {
     "qaoa": ["gammas", "betas"],
     "maqaoa": ["gammas", "betas"],
     "xqaoa": ["gammmas", "betas", "alphas"],
     "falqon": ["betas", "depth_probs"],
     "varqite": ["thetas"],
 }
+# All kwargs that exist for all algorithms
+DATA_KWARGS = [
+    "invm_p4s",
+    "invms",
+    "coeffs",
+    "norm_coeffs",
+    "probs",
+    "costs",
+    "expvals",
+    "evals",
+    "min_bitstrings",
+    "min_energies",
+]
+# FALQON kwargs that are saved per-depth/per-step
+SLICEABLE_KWARGS = ["betas", "depth_probs", "costs"]
+# Save only every nth data depth for FALQON
+FALQON_DIFF = 10
 
 
 def worker(
@@ -88,6 +106,9 @@ def worker(
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(error_dir, exist_ok=True)
 
+    # List of all keywords for specific algorithm
+    ALL_KWARGS = DATA_KWARGS + UNIQUE_KWARGS[alg.lower()]
+
     # Create contexts for stdout and stderr files
     with open(out_path, "a") as fout, open(err_path, "a") as ferr:
         # Redirect stdout and stdout to these files
@@ -119,33 +140,7 @@ def worker(
                     bitflip_prob=bitflip_prob,
                     alg_specific_kwargs=alg_specific_kwargs,
                 )
-                return_tuple = (
-                    data_dict["invm_p4s"],
-                    data_dict["invms"],
-                    data_dict["coeffs"],
-                    data_dict["norm_coeffs"],
-                    data_dict["probs"],
-                    data_dict["costs"],
-                    data_dict["expvals"],
-                    data_dict["evals"],
-                    data_dict["min_bitstrings"],
-                    data_dict["min_energies"],
-                )
-                match alg.lower():
-                    case "qaoa" | "maqaoa":
-                        return_tuple += (data_dict["gammas"], data_dict["betas"])
-                    case "xqaoa":
-                        return_tuple += (
-                            data_dict["gammas"],
-                            data_dict["betas"],
-                            data_dict["alphas"],
-                        )
-                    case "falqon":
-                        return_tuple += (data_dict["betas"], data_dict["depth_probs"])
-                    case "varqite":
-                        return_tuple += (data_dict["thetas"],)
-
-                return return_tuple
+                return [data_dict[kwarg] for kwarg in ALL_KWARGS]
             # Or error to file
             except Exception:
                 from traceback import print_exc
@@ -224,11 +219,10 @@ def main(
     with Pool(workers) as pool:
         invm_data = pool.map(partial_worker, evt_inds)
 
-    kwargs = unique_kwargs[alg.lower()]
-    # Number of events
-    N_evts = len(invm_data)
-    # Number of different output data
-    N_outs = len(invm_data[0])
+    # Starting index for slicing if using FALQON
+    start_ind = (depth - 1) % FALQON_DIFF
+    # Every kwarg for this algorithm
+    ALL_KWARGS = DATA_KWARGS + UNIQUE_KWARGS[alg]
     # We are saving to individual per-invm directory so loop over them
     for ind, invm in enumerate(INVMS[:-1]):
         # Make a more specific string if we need to specify the lambda coefficient
@@ -271,41 +265,51 @@ def main(
         noise = f"{1000 * bitflip_prob:0>3.0f}_" if bitflip_prob != 0 else ""
         name = f"eff_{noise}{ind_lo:0>{5}}-{ind_hi:0>{5}}"
 
-        # Swapping from (N_evts, N_outs) to (N_outs, N_evts)
+        # Swapping (N_evts, N_outs, ...) to (N_outs, N_evts, ...) where ... are
+        # the different Numpy arrays of data and N_evts == number of events,
+        # N_outs == number of different output data. We also slice the depths
+        # for FALQON data modulo `diff`
         outs = []
-        for M in range(N_outs):
-            out_res = []
-            for N in range(N_evts):
-                out_res.append(invm_data[N][M][ind])
+        # Iterates over different datas of `invm_data` (over N_outs)
+        for key, col in zip(ALL_KWARGS, zip(*invm_data)):
+            # Get data as (N_evts, ...)
+            arr = np.array([elem[ind] for elem in col])
 
-            outs.append(np.array(out_res))
+            # Appropriately slice the appropriate kwargs ONLY FOR FALQON, we
+            # don't want to save EVERY depth since that's a lot of storage space
+            # so instead save every nth where n == FALQON_DIFF. We make sure to
+            # start saving such that the last depth saved is the largest, thus
+            # we start at `start_ind`.
+            if alg.lower() == "falqon":
+                if key in SLICEABLE_KWARGS:
+                    # Just in case, make sure array is properly shaped
+                    if arr.ndim < 2:
+                        raise ValueError(
+                            f"Key '{key}' requires at least 2 dimensions but has"
+                            f"shape {arr.shape}."
+                        )
+                    if arr.shape[1] != depth:
+                        raise ValueError(
+                            f"Key '{key}' expected dimension 1 of size {depth} but"
+                            f"has shape {arr.shape}."
+                        )
+                    # Slice the "depth" dimension
+                    arr = arr[:, start_ind::FALQON_DIFF, ...]
+            outs.append(arr)
+
+        save_data = dict(zip(ALL_KWARGS, outs))
+        # This is an array where the ith element gives you the depth for the ith
+        # element of `depth_probs`, `betas`, `costs`
+        if alg.lower() == "falqon":
+            save_data.update(
+                {"depth_inds": np.arange(start_ind, depth, step=FALQON_DIFF)}
+            )
+
         # Save everything
-        save(
-            name=name,
-            savedir=invm_dir,
-            stype="npz",
-            absolute=True,
-            invm_p4s=outs[0],
-            invms=outs[1],
-            coeffs=outs[2],
-            norm_coeffs=outs[3],
-            probs=outs[4],
-            costs=outs[5],
-            expvals=outs[6],
-            evals=outs[7],
-            min_bitstrings=outs[8],
-            min_energies=outs[9],
-            # e.g. gammas, betas, and so on
-            **dict(zip(kwargs, outs[-len(kwargs) :])),
-        )
+        save(name=name, savedir=invm_dir, stype="npz", absolute=True, **save_data)
 
 
 if __name__ == "__main__":
-    # For
-    # - VarQITE: set depth=1, steps=500 (can vary)
-    # - FALQON: set depth=2500 (can vary) and comment out steps
-    # - QAOA-like: set steps=1000 (can vary)
-    # - H0: comment out "lambda_X" (not needed)
     parser = ArgumentParser(add_help=False)
     parser.add_argument(
         "--alg", "-a", type=lambda s: s.lower(), required=True, choices=ALG_CHOICES
