@@ -18,11 +18,8 @@ from .constants import (
     INVMS,
     LAMBDA_COMBOS,
     NORM_CHOICES,
-    NUM_FSP_DICT,
     OUTPUT_DIR,
-    SYM_TRUE_BS_DICT,
 )
-from .hamiltonians import get_bitstrings
 from .type_hints import DatumType
 
 ParamType: TypeAlias = str | float | int
@@ -55,7 +52,7 @@ def find_dir(
     alg: str,
     depth: int | str,
     hamiltonian: str,
-    norm: str,
+    norm: str = "max",
     etype: str = "ttbar",
     dtype: str = "parton",
     lambda_nume: str | None = None,
@@ -71,8 +68,8 @@ def find_dir(
     depth - The depth of the circuit ran
     hamiltonian - Which Hamiltonian used. Can be "H0", "H1", or "H2". If "H2",
         must define `lambda_nume` and `lambda_denom`.
-    norm - The normalization scheme used for the coefficient matrix. Can be
-        "max", "mean", or "sum".
+    norm (default "max") - The normalization scheme used for the coefficient
+        matrix. Can be "max", "mean", or "sum".
     etype (default "ttbar") - The event type, currently can be "ttbar",
         "tW" or "6jet".
     dtype (default "parton") - The data type, currently can be "parton"
@@ -82,6 +79,8 @@ def find_dir(
     lambda_denom (default None) - The denominator of the lambda coefficient used
         in the H2 Hamiltonian.
     """
+    lambda_nume = lambda_nume or "minJij"
+    lambda_denom = lambda_denom or "maxPij"
     # Find the root directory for data
     ham_str = hamiltonian
     if hamiltonian == "H2":
@@ -254,9 +253,7 @@ def load_data(
     return data
 
 
-def _extract_falqon_data(
-    dfile: Path, depths: NDArray[int], correct: str, bitstrings: NDArray[str]
-) -> list[DatumType]:
+def _extract_falqon_data(dfile: Path, depths: NDArray[int], invm) -> list[DatumType]:
     """
     Properly extract the FALQON data for specific depths.
     """
@@ -271,12 +268,18 @@ def _extract_falqon_data(
     min_energies = file_data["min_energies"]
     costs = file_data["costs"]
     betas = file_data["betas"]
+    inds = file_data["depth_inds"]
 
+    # Indices for the depths we want
+    depth_inds = np.where(np.isin(inds, depths - 1))[0]
+    if len(depth_inds) != len(depths):
+        missing = depths[~np.isin(depths - 1, inds[np.isin(inds, depths - 1)])]
+        raise ValueError(f"Missings depths: {missing}")
     # Get probabilities as specific depth
-    depth_probs = np.swapaxes(file_data["depth_probs"][:, depths - 1, :], 0, 1)
+    depth_probs = np.swapaxes(file_data["depth_probs"][:, depth_inds, :], 0, 1)
     # Get expectation values at specific depth
-    depth_expvals = np.swapaxes(file_data["costs"][:, depths - 1], 0, 1)
-    for depth, probs, expvals in zip(depths, depth_probs, depth_expvals):
+    depth_expvals = np.swapaxes(file_data["costs"][:, depth_inds], 0, 1)
+    for depth_ind, probs, expvals in zip(depth_inds, depth_probs, depth_expvals):
         datum = {}
 
         # Per event data, isn't dependent on depth
@@ -288,10 +291,10 @@ def _extract_falqon_data(
         datum["min_energies"] = min_energies
 
         # Depth-dependent data
-        datum["costs"] = costs[:, :depth]
+        datum["costs"] = costs[:, :depth_ind]
         datum["expvals"] = expvals
         datum["probs"] = probs
-        datum["betas"] = betas[:, :depth]
+        datum["betas"] = betas[:, :depth_ind]
 
         data.append(datum)
     return data
@@ -307,12 +310,7 @@ def load_falqon_depths(falqon_path: Path, depths: Sequence[int]) -> list[DatumTy
         directories labeled by the invariant mass bin lower values.
     depths: Depths to extract data for.
     """
-    depths = np.array(depths)
-    # Get constants to use
-    etype = falqon_path.name.split("_")[0]
-    num_fsp = NUM_FSP_DICT[etype]
-    correct = SYM_TRUE_BS_DICT[etype]
-    bitstrings = get_bitstrings(N=num_fsp, astype="bits")
+    depths = np.array(depths).astype(int)
     num_p = len(depths)
 
     falqon_data = [{} for _ in range(num_p)]
@@ -320,9 +318,9 @@ def load_falqon_depths(falqon_path: Path, depths: Sequence[int]) -> list[DatumTy
         path = falqon_path / f"{invm:.2f}"
 
         invm_data = [defaultdict(list) for _ in range(num_p)]
-        for dfile in path.iterdir():
+        for dfile in sorted(path.iterdir()):
             # This is where the FALQON-specific parsing occurs
-            partial_data = _extract_falqon_data(dfile, depths, correct, bitstrings)
+            partial_data = _extract_falqon_data(dfile, depths, invm)
 
             for invm_datum, partial_datum in zip(invm_data, partial_data):
                 for key, val in partial_datum.items():
