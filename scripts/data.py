@@ -45,26 +45,32 @@ def get_bitstring_invms(
         using a single bitstring, the length of the array should equal the
         length of `evts`.
     """
-    num_bits = evts.shape[-2]
-    num_evts = evts.shape[0] if len(evts.shape) == 3 else 1
     # Turn single string in copies of itself for use below
     if isinstance(bitstrings, str):
-        bitstrings = np.tile(bitstrings, num_evts).astype(f"S{num_bits}")
+        num_evts = evts.shape[0] if evts.ndim == 3 else 1
+        bitstrings = np.tile(bitstrings, num_evts)
 
     # Turns bitstrings into a boolean mask, one N-length array per event
-    mask = bitstrings.view(np.uint8).reshape(-1, num_bits) == ord("1")
+    mask = np.array([list(s) for s in bitstrings]) == "1"
+
     # Creates 4-length array for each event of summed 4-momenta for 0's and 1's
-    summed_p4s_0 = np.sum(evts * np.invert(mask)[..., None], axis=1)
-    summed_p4s_1 = np.sum(evts * mask[..., None], axis=1)
+    summed_p4s_0 = np.sum(evts * ~mask[..., np.newaxis], axis=1)
+    summed_p4s_1 = np.sum(evts * mask[..., np.newaxis], axis=1)
 
     # Find m^2 = p^2, round to avoid small negative masses due to floating point
     msq_0 = np.round(np.sum(summed_p4s_0 * (METRIC * summed_p4s_0), axis=1), 3)
     msq_1 = np.round(np.sum(summed_p4s_1 * (METRIC * summed_p4s_1), axis=1), 3)
 
-    # Make sure we don't have any negative masses
-    if ((msq_0 < 0.0) & np.isclose(msq_0, 0.0)).any():
-        raise Exception(f"We have negative masses: {np.where(msq_0 < 0) = }")
-    if ((msq_1 < 0.0) & np.isclose(msq_1, 0.0)).any():
-        raise Exception(f"We have negative masses: {np.where(msq_1 < 0) = }")
+    # Set near-zero (floating point error) values to zero
+    msq_0 = np.where(np.isclose(msq_0, 0.0), 0.0, msq_0)
+    msq_1 = np.where(np.isclose(msq_1, 0.0), 0.0, msq_1)
+
+    # Check to make sure there aren't any actual negative mass squared
+    if (msq_0 < 0.0).any():
+        bad_inds = np.where(msq_0 < 0.0)[0]
+        raise ValueError(f"Negative mass squared for 0 at {bad_inds}: {msq_0[bad_inds]}")
+    if (msq_1 < 0.0).any():
+        bad_inds = np.where(msq_1 < 0.0)[0]
+        raise ValueError(f"Negative mass squared for 1 at {bad_inds}: {msq_1[bad_inds]}")
 
     return np.stack((np.sqrt(msq_0), np.sqrt(msq_1))).T
